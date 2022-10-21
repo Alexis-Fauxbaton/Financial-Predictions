@@ -16,6 +16,8 @@ def standard_labeling(data, max_days, target_range):
     predict_data["Target"] = (
         data["Close"].shift(-target_range) - data["Close"] >= 0)
     predict_data["Target"] = np.where(predict_data["Target"] == True, 1, 0)
+    predict_data["Target_Variation"] = (
+        data["Close"].shift(-target_range) - data["Close"])/data["Close"]
     predict_data.dropna(inplace=True)
     predict_data.reset_index(inplace=True, drop=True)
     predict_data = predict_data[0:len(predict_data)-target_range]
@@ -31,6 +33,8 @@ def meta_labeling(data, max_days, target_range):
         predict_data[["Variation-{}".format(i), "RSI-{}".format(i), "MACD-{}".format(
             i), "MACD_H-{}".format(i)]] = data[["Variation", "RSI", "MACD", "MACD_H"]].shift(i)
 
+
+    # Try to parallelize later
     for index,row in data.iterrows():
         #index = row[0]
         slice_data = data[index:index+target_range+1]
@@ -110,8 +114,12 @@ def create_predict_data(data, max_days=30, target_range=10, standard=True):
                 predict_data["Target"] = predict_data["Target"].replace(-1, 0)
 
     if not read:
+        '''
         predict_data = predict_data[[
             i % int(max_days) == 0 for i in range(len(predict_data))]]
+        '''
+        predict_data = predict_data[[
+            i % int(max_days/3) == 0 for i in range(len(predict_data))]]
             
 
     if (not standard) and (read==False):
@@ -125,8 +133,19 @@ def yearly_custom_splitter(data1, data2):
     train_labels = data1["Target"]
     test_data = data2.drop(["Date", "Unix", "Target"], axis=1)
     test_labels = data2["Target"]
+    variation_check = False
 
-    return train_data, train_labels, test_data, test_labels
+    try:
+        train_data.drop("Target_Variation", axis=1, inplace=True)
+        test_data.drop("Target_Variation", axis=1, inplace=True)
+        variation_check = True
+    except:
+        pass
+
+    if variation_check:
+        return train_data, train_labels, test_data, test_labels, data2["Target_Variation"] 
+    else:
+        return train_data, train_labels, test_data, test_labels, None
 
 
 def sample_equal_target(data):
@@ -143,7 +162,9 @@ def sample_equal_target(data):
         
     #print(data["Weights"].loc[data["Target"] == 0])
         
-    sample = data.sample(int(len(data)/2.5),weights=data["Weights"])
+    #sample = data.sample(int(len(data)/2.5),weights=data["Weights"])
+    sample = data.sample(60000,weights=data["Weights"])
+    
     sample_labels = sample["Target"]
     sample.drop("Weights", inplace=True, axis=1)
     
@@ -158,14 +179,16 @@ if __name__ == "__main__":
 
     data = pd.read_csv("minute_data/BTC-USD_1M_SIGNALS.csv")
 
-    predict_data = create_predict_data(data, 30, 10, False)
+    standard_labels = False
+
+    predict_data = create_predict_data(data, 30, 10, standard_labels)
 
     data_19_20 = predict_data.loc[(predict_data["Unix"] >= 1546300800) & (
         predict_data["Unix"] < 1609459200)]
 
     data_2021 = predict_data.loc[predict_data["Unix"] >= 1609459200]
 
-    train_data, train_labels, test_data, test_labels = yearly_custom_splitter(
+    train_data, train_labels, test_data, test_labels, test_variation = yearly_custom_splitter(
         data_19_20, data_2021)
 
     shape = (len(test_data.columns),)
@@ -174,19 +197,30 @@ if __name__ == "__main__":
     train_set["Target"] = train_labels
     
     #Sampling same number of elements for each class to ensure no one is more likely to be found
-    train_data,train_labels = sample_equal_target(train_set)
-    train_data.drop("Target",axis=1,inplace=True)
+    if not standard_labels:
+        print("\nData points in training set before sampling :", len(train_set))
+        
+        train_data,train_labels = sample_equal_target(train_set)
+        print("\nData points in training set after sampling :", len(train_labels))
+        train_data.drop("Target",axis=1,inplace=True)
+    else:
+        print("\nData points in training set :", len(train_set))
+    print("\nData points in validation set :", len(test_labels))
+    print()
     #raise Exception("Stop")
     
     print(train_labels.value_counts())
     
-    if train_labels.nunique() == 2:
+    outputs = train_labels.nunique()
+    
+    if outputs == 2:
         
     
         model = tf.keras.Sequential([
             tf.keras.layers.Flatten(input_shape=shape),
             tf.keras.layers.Dense(200, activation='relu'),
             tf.keras.layers.Dense(2000, activation='relu'),
+            tf.keras.layers.Dense(5000, activation='relu'),
             tf.keras.layers.Dense(2000, activation='relu'),
             tf.keras.layers.Dense(200, activation='relu'),
             tf.keras.layers.Dense(1, activation='sigmoid')
@@ -197,7 +231,6 @@ if __name__ == "__main__":
                     metrics=['accuracy', 'Precision', 'Recall', 'AUC'])
         
     else:
-        outputs = train_labels.nunique()
         
         print("Using {} classes".format(outputs))
         
@@ -218,17 +251,35 @@ if __name__ == "__main__":
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
 
     #model training
-    model.fit(train_data, train_labels, epochs=10, validation_data=(test_data,test_labels),callbacks=[tensorboard_callback], batch_size=32)
+    model.fit(train_data, train_labels, epochs=10, validation_data=(test_data,test_labels),callbacks=[tensorboard_callback], batch_size=64)
     
     probs = model.predict(test_data)
     
-    if outputs > 1:
+    if outputs > 2:
         preds = probs.argmax(axis=-1)
+    else:
+        preds = [1 if i>0.5 else 0 for i in probs]
     
-    
-    print(test_labels, preds)
+    #print(test_labels, preds)
     print(tf.math.confusion_matrix(test_labels, preds))
     
+    test_set = test_data.copy()
+
+    test_set["Prediction"] = preds
+    test_set["Target"] = test_labels
+    test_set["Target_Variation"] = test_variation
+    
+    if test_labels.nunique() > 2:
+        test_set["Prediction"] = test_set["Prediction"].replace(0,-1)
+        test_set["Prediction"] = test_set["Prediction"].replace(1,0)
+        test_set["Prediction"] = test_set["Prediction"].replace(2,1)
+        
+    
+    mean_gain = np.mean(np.abs(test_set["Target_Variation"].loc[test_set["Prediction"] == test_set["Target"]]))
+    
+    mean_loss = np.mean(np.abs(test_set["Target_Variation"].loc[test_set["Prediction"] != test_set["Target"]]))
+    
+    print("Mean Gain : {} ||| Mean Loss {}".format(mean_gain, mean_loss))
     
     #test_loss, test_acc, test_prec, test_rec, test_auc = model.evaluate(test_data,  test_labels, verbose=2)
     
