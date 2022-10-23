@@ -1,9 +1,14 @@
+from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 import tensorflow as tf
 import matplotlib.pyplot as plt
 from datetime import datetime
 from datetime import timedelta
+import data_processing
+
+max_days = 30
+target_range = 10
 
 def standard_labeling(data, max_days, target_range):
     predict_data = data.copy().drop(["Open", "Close", "High", "Low", "Symbol"], axis=1)
@@ -83,6 +88,8 @@ def meta_labeling(data, max_days, target_range):
     predict_data["Target1"] = (
         data["Close"].shift(-target_range) - data["Close"] >= 0)
     predict_data["Target1"] = np.where(predict_data["Target1"] == True, 1, 0)
+    predict_data["Target_Variation"] = (
+        data["Close"].shift(-target_range) - data["Close"])/data["Close"]
     predict_data.dropna(inplace=True)
     predict_data.reset_index(inplace=True, drop=True)
     predict_data = predict_data[0:len(predict_data)-target_range]
@@ -108,6 +115,7 @@ def create_predict_data(data, max_days=30, target_range=10, standard=True):
         except:
             read = False
             predict_data = meta_labeling(data, max_days, target_range)
+            predict_data.drop("Target1", axis=1, inplace=True)
             if -1 in predict_data["Target"].values:
                 predict_data["Target"] = predict_data["Target"].replace(1, 2)
                 predict_data["Target"] = predict_data["Target"].replace(0, 1)
@@ -172,6 +180,137 @@ def sample_equal_target(data):
     
     return sample,sample_labels
 
+
+def train_and_return_model_for_2021_2022():
+    data = pd.read_csv("minute_data/BTC-USD_1M_SIGNALS.csv")
+
+    standard_labels = True
+
+    predict_data = create_predict_data(data, max_days, target_range, standard_labels)
+
+    data_19_20 = predict_data.loc[(predict_data["Unix"] >= 1546300800) & (
+        predict_data["Unix"] < 1609459200)]
+
+    data_2021 = predict_data.loc[predict_data["Unix"] >= 1609459200]
+
+    train_data, train_labels, test_data, test_labels, test_variation = yearly_custom_splitter(
+        data_19_20, data_2021)
+
+    shape = (len(test_data.columns),)
+    
+    train_set = train_data.copy()
+    train_set["Target"] = train_labels
+    
+    #Sampling same number of elements for each class to ensure no one is more likely to be found
+    if not standard_labels:
+        print("\nData points in training set before sampling :", len(train_set))
+        
+        train_data,train_labels = sample_equal_target(train_set)
+        print("\nData points in training set after sampling :", len(train_labels))
+        train_data.drop("Target",axis=1,inplace=True)
+    else:
+        print("\nData points in training set :", len(train_set))
+    print("\nData points in validation set :", len(test_labels))
+    print()
+    #raise Exception("Stop")
+    
+    print(train_labels.value_counts())
+    
+    outputs = train_labels.nunique()
+    
+    epochs = 10
+    
+    if outputs == 2:
+        
+    
+        model = tf.keras.Sequential([
+            tf.keras.layers.Flatten(input_shape=shape),
+            tf.keras.layers.Dense(200, activation='relu'),
+            tf.keras.layers.Dense(2000, activation='relu'),
+            tf.keras.layers.Dense(5000, activation='relu'),
+            tf.keras.layers.Dense(2000, activation='relu'),
+            tf.keras.layers.Dense(200, activation='relu'),
+            tf.keras.layers.Dense(1, activation='sigmoid')
+        ])
+
+        model.compile(optimizer='adam',
+                    loss=tf.keras.losses.BinaryCrossentropy(),
+                    metrics=['accuracy', 'Precision', 'Recall', 'AUC'])
+        
+        epochs = 10
+        
+    else:
+        
+        print("Using {} classes".format(outputs))
+        
+        model = tf.keras.Sequential([
+            tf.keras.layers.Flatten(input_shape=shape),
+            tf.keras.layers.Dense(200, activation='relu'),
+            tf.keras.layers.Dense(2000, activation='relu'),
+            tf.keras.layers.Dense(5000, activation='relu'),
+            tf.keras.layers.Dense(2000, activation='relu'),
+            tf.keras.layers.Dense(200, activation='relu'),
+            tf.keras.layers.Dense(outputs, activation='softmax')
+        ])
+
+        model.compile(optimizer='adam',
+                    loss=tf.keras.losses.SparseCategoricalCrossentropy(),
+                    metrics=['accuracy'])
+        
+        epochs = 20
+    
+    log_dir = "logs/fit/" + datetime.now().strftime("%Y%m%d-%H%M%S")
+    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
+
+    #model training
+    model.fit(train_data, train_labels, epochs=epochs, validation_data=(test_data,test_labels),callbacks=[tensorboard_callback], batch_size=64)
+    
+    probs = model.predict(test_data)
+    
+    if outputs > 2:
+        preds = probs.argmax(axis=-1)
+    else:
+        preds = [1 if i>0.5 else 0 for i in probs]
+    
+    #print(test_labels, preds)
+    print(tf.math.confusion_matrix(test_labels, preds))
+    
+    return model
+
+def standardize_new_col(data, cols, means, stds):
+    data[cols] = data[cols]
+
+#We only buy when model tells us to and sell at the end of the period
+def simple_strategy_backtest(test_set):
+    init_assets = 100
+    assets = init_assets
+    test_set = test_set.copy()
+    test_set.reset_index(inplace=True, drop=True)
+    val = 1
+    """
+    if test_set["Target"].nunique() == 2:
+        val = 1
+    else:
+        val = 1
+    """
+    backtest_set = test_set.loc[test_set["Prediction"] == 1]
+    backtest_set["Assets"] = 100
+    backtest_set.reset_index(inplace=True, drop=True)
+    backtest_set_assets = [0 for i in range(len(backtest_set))]
+    for index,row in backtest_set.iterrows():
+        assets = assets * (1+row["Target_Variation"])
+        backtest_set.loc[index,"Assets"] = assets
+        backtest_set_assets[index] = assets
+    print(10*"#")
+    print("Simple Strategy Backtest")
+    print("Backtest Time Interval : {} - {}".format(test_set.loc[0,"Date"], test_set.loc[len(test_set)-1,"Date"]))
+    print("Value of assets at the beginning of simple strategy : {}".format(init_assets))
+    print("Value of assets at the end of simple strategy : {}".format(assets))
+    N = np.arange(0,len(backtest_set_assets))
+    plt.figure(figsize=[20,10])
+    plt.plot(N[0:1000],backtest_set_assets[0:1000],label="Évolution du portefeuille")
+    plt.show()
+
 if __name__ == "__main__":
 
     # In case we need this to get mean and std from columns to normalize new data
@@ -213,6 +352,8 @@ if __name__ == "__main__":
     
     outputs = train_labels.nunique()
     
+    epochs = 10
+    
     if outputs == 2:
         
     
@@ -230,6 +371,8 @@ if __name__ == "__main__":
                     loss=tf.keras.losses.BinaryCrossentropy(),
                     metrics=['accuracy', 'Precision', 'Recall', 'AUC'])
         
+        epochs = 10
+        
     else:
         
         print("Using {} classes".format(outputs))
@@ -238,6 +381,7 @@ if __name__ == "__main__":
             tf.keras.layers.Flatten(input_shape=shape),
             tf.keras.layers.Dense(200, activation='relu'),
             tf.keras.layers.Dense(2000, activation='relu'),
+            tf.keras.layers.Dense(5000, activation='relu'),
             tf.keras.layers.Dense(2000, activation='relu'),
             tf.keras.layers.Dense(200, activation='relu'),
             tf.keras.layers.Dense(outputs, activation='softmax')
@@ -246,12 +390,14 @@ if __name__ == "__main__":
         model.compile(optimizer='adam',
                     loss=tf.keras.losses.SparseCategoricalCrossentropy(),
                     metrics=['accuracy'])
+        
+        epochs = 15
     
     log_dir = "logs/fit/" + datetime.now().strftime("%Y%m%d-%H%M%S")
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
 
     #model training
-    model.fit(train_data, train_labels, epochs=10, validation_data=(test_data,test_labels),callbacks=[tensorboard_callback], batch_size=64)
+    model.fit(train_data, train_labels, epochs=epochs, validation_data=(test_data,test_labels),callbacks=[tensorboard_callback], batch_size=64)
     
     probs = model.predict(test_data)
     
@@ -268,20 +414,65 @@ if __name__ == "__main__":
     test_set["Prediction"] = preds
     test_set["Target"] = test_labels
     test_set["Target_Variation"] = test_variation
+    #Our test set is data2021 (Set to potentially change)
+    test_set["Date"] = data_2021["Date"]
     
     if test_labels.nunique() > 2:
         test_set["Prediction"] = test_set["Prediction"].replace(0,-1)
         test_set["Prediction"] = test_set["Prediction"].replace(1,0)
         test_set["Prediction"] = test_set["Prediction"].replace(2,1)
-        
     
+    """
     mean_gain = np.mean(np.abs(test_set["Target_Variation"].loc[test_set["Prediction"] == test_set["Target"]]))
     
     mean_loss = np.mean(np.abs(test_set["Target_Variation"].loc[test_set["Prediction"] != test_set["Target"]]))
     
     print("Mean Gain : {} ||| Mean Loss {}".format(mean_gain, mean_loss))
+    """
+    
+    #Backtest of simplest strategy
+    simple_strategy_backtest(test_set)
+    
     
     #test_loss, test_acc, test_prec, test_rec, test_auc = model.evaluate(test_data,  test_labels, verbose=2)
     
     #time = str(datetime.date.today())
     #model.save('./models/30_to_10m_200_2000_200_y2019_2020_'+time)
+    
+    """
+    #Loading means and stds from non processed dataframe to standardize new data
+    cols, prev_means, prev_stds = data_processing.process_minute_data(False)
+    
+    sept_2022 = pd.read_csv("./minute_data/BTCUSDT-1m-2022-09.csv", names=["Open Time", "Open", "High", "Low", "Close", "Volume", "Close Time", "Volume USD", "Trades", "Drop1", "Drop2", "Drop3"])
+    
+    sept_2022.drop(["Close Time", "Volume", "Trades", "Drop1", "Drop2", "Drop3"], axis=1, inplace=True)
+    sept_2022.rename({"Open Time": "Unix"}, axis=1, inplace=True)
+    
+    sept_2022["Variation"] = (
+        sept_2022["Close"] - sept_2022["Close"].shift(1)) / sept_2022["Close"].shift(1)
+    
+    sept_2022 = data_processing.add_rsi(sept_2022)
+    sept_2022 = data_processing.add_macd(sept_2022)
+    sept_2022 = data_processing.add_adx(sept_2022)
+    
+    sept_2022[cols] = (sept_2022[cols] - prev_means)/prev_stds
+    
+    print(sept_2022)
+    
+    validation_sept_2022 = standard_labeling(sept_2022, max_days, target_range)
+    
+    probs = model.predict(validation_sept_2022)
+    
+    if outputs > 2:
+        preds = probs.argmax(axis=-1)
+    else:
+        preds = [1 if i>0.5 else 0 for i in probs]
+    
+    #print(test_labels, preds)
+    print("Predictions for september of 2022")
+    print(tf.math.confusion_matrix(test_labels, preds))
+    
+    
+    """
+    
+    

@@ -1,3 +1,4 @@
+from concurrent.futures import process
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -5,6 +6,8 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 from datetime import timedelta
 import requests
+
+pd.set_option('display.max_rows', 500)
 
 # Only processes 1m data for now
 
@@ -64,7 +67,7 @@ def fear_and_greed():
 
     return fng.drop(["time_until_update", "value_classification"], axis=1)
 
-
+"""
 def add_rsi(data):
     df = data.copy()
 
@@ -89,6 +92,32 @@ def add_rsi(data):
     #df['RSI'].loc[0:14] = 100 - (100 / (1 + df['Avg Gain'].loc[0:14] / df['Avg Loss'].loc[0:14]))
 
     return df
+    """
+    
+def add_rsi (data, time_window=14):
+    diff = data["Close"].diff(1).dropna()        # diff in one field(one day)
+
+    #this preservers dimensions off diff values
+    up_chg = 0 * diff
+    down_chg = 0 * diff
+    
+    # up change is equal to the positive difference, otherwise equal to zero
+    up_chg[diff > 0] = diff[ diff>0 ]
+    
+    # down change is equal to negative deifference, otherwise equal to zero
+    down_chg[diff < 0] = diff[ diff < 0 ]
+    
+    # check pandas documentation for ewm
+    # https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.ewm.html
+    # values are related to exponential decay
+    # we set com=time_window-1 so we get decay alpha=1/time_window
+    up_chg_avg   = up_chg.ewm(com=time_window-1 , min_periods=time_window).mean()
+    down_chg_avg = down_chg.ewm(com=time_window-1 , min_periods=time_window).mean()
+    
+    rs = abs(up_chg_avg/down_chg_avg)
+    rsi = 100 - 100/(1+rs)
+    data["RSI"] = rsi
+    return data    
 
 
 def add_macd(data):
@@ -165,21 +194,20 @@ def merge_1m():
 # 1 minute data processing
 
 
-def process_minute_data():
+def process_minute_data(write=True):
 
     data = pd.read_csv("minute_data/BTC-USD_1m.csv")
+    data.sort_values(by="Unix", ascending=True, inplace=True, ignore_index=True)
     data["Variation"] = (
         data["Close"] - data["Close"].shift(1)) / data["Close"].shift(1)
     data = add_rsi(data)
+    print("RSI infos : {}/{}".format(data["RSI"].mean(), data["RSI"].std()))
     data = add_macd(data)
     data = add_adx(data)
     #data.drop("Adj Close",axis=1,inplace=True)
-    data = standardize_col(data, "Volume USD")
-    data = standardize_col(data, "MACD")
-    data = standardize_col(data, "MACD_H")
-    data = standardize_col(data, "RSI")
-    data = standardize_col(data, "Variation")
-    data = standardize_col(data, ["ADX14", "-DM", "+DM"])
+    columns_to_standardize = ["Volume USD", "MACD", "MACD_H", "RSI", "Variation", "ADX14", "-DM", "+DM"]
+    means, std = data[columns_to_standardize].mean(), data[columns_to_standardize].std()
+    
     '''
     confirmation = confirmation_time(pd.read_csv("median-confirmation-time.csv"))
     transactions = network_transactions(pd.read_csv("n-transactions.csv"))
@@ -194,8 +222,22 @@ def process_minute_data():
     data = standardize_col(data,"Miners Revenue")
     data = standardize_col(data,"FnG")
     '''
-    data.drop(["Volume BTC"], axis=1, inplace=True)
-    data.dropna(inplace=True)
-    data.sort_values(by="Unix", ascending=True, inplace=True)
 
-    data.to_csv("minute_data/BTC-USD_1M_SIGNALS.csv", index=False)
+    if write:
+        data.dropna(inplace=True)
+        data = standardize_col(data, "Volume USD")
+        data = standardize_col(data, "MACD")
+        data = standardize_col(data, "MACD_H")
+        print(data)
+        data = standardize_col(data, "RSI")
+        data = standardize_col(data, "Variation")
+        data = standardize_col(data, ["ADX14", "-DM", "+DM"])
+        data.drop(["Volume BTC"], axis=1, inplace=True)
+        data.dropna(inplace=True)
+        data.to_csv("minute_data/BTC-USD_1M_SIGNALS.csv", index=False)
+    
+    return columns_to_standardize, means, std
+
+
+if __name__ == "__main__":
+    process_minute_data()
