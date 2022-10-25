@@ -8,6 +8,8 @@ import data_processing
 from multiprocessing import Pool
 import os
 
+#USE PANDAS-TA LIB FOR ADDING TECHNICAL INDICATORS
+
 max_days = 30
 target_range = 10
 
