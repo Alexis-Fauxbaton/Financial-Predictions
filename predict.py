@@ -4,8 +4,9 @@ import pandas as pd
 import tensorflow as tf
 import matplotlib.pyplot as plt
 from datetime import datetime
-from datetime import timedelta
 import data_processing
+from multiprocessing import Pool
+import os
 
 max_days = 30
 target_range = 10
@@ -38,7 +39,7 @@ def meta_labeling(data, max_days, target_range):
         predict_data[["Variation-{}".format(i), "RSI-{}".format(i), "MACD-{}".format(
             i), "MACD_H-{}".format(i)]] = data[["Variation", "RSI", "MACD", "MACD_H"]].shift(i)
 
-
+    target = np.zeros(data.shape[0])
     # Try to parallelize later
     for index,row in data.iterrows():
         #index = row[0]
@@ -80,11 +81,170 @@ def meta_labeling(data, max_days, target_range):
             else:
                 first = 1            
 
-        predict_data.at[index, "Target"] = first
+        #predict_data.at[index, "Target"] = first
+        target[index] = first
 
         if index % 1000 == 0:
             print("Itération {}/{}".format(index, size), end='\r')
 
+    predict_data["Target"] = target
+    predict_data["Target1"] = (
+        data["Close"].shift(-target_range) - data["Close"] >= 0)
+    predict_data["Target1"] = np.where(predict_data["Target1"] == True, 1, 0)
+    predict_data["Target_Variation"] = (
+        data["Close"].shift(-target_range) - data["Close"])/data["Close"]
+    predict_data.dropna(inplace=True)
+    predict_data.reset_index(inplace=True, drop=True)
+    predict_data = predict_data[0:len(predict_data)-target_range]
+
+    return predict_data
+
+# To remove if parallel version works
+def meta_labeling_2(data, max_days, target_range):
+    predict_data = data.copy().drop(["Open", "Close", "High", "Low", "Symbol"], axis=1)
+    size = data.shape[0]
+    first = None
+    for i in range(1, max_days):  # 2jours
+        predict_data[["Variation-{}".format(i), "RSI-{}".format(i), "MACD-{}".format(
+            i), "MACD_H-{}".format(i)]] = data[["Variation", "RSI", "MACD", "MACD_H"]].shift(i)
+
+    target = np.zeros(size)
+    # Try to parallelize later
+    for index,row in data.iterrows():
+        #index = row[0]
+        slice_data = data[index:index+target_range+1]
+        #max_range = data[["Unix","High"]].loc[data["High"] == data["High"][index:index+max_days-1].max()].reset_index(drop=True)
+        #min_range = data[["Unix","Low"]].loc[data["Low"] == data["Low"][index:index+max_days-1].min()].reset_index(drop=True)
+        max_unix = None
+        min_unix = None
+
+        max_range = slice_data[["Unix", "High"]].loc[slice_data["High"]
+                                                     == slice_data["High"].max()].reset_index(drop=True)
+        min_range = slice_data[["Unix", "Low"]].loc[slice_data["Low"]
+                                                    == slice_data["Low"].min()].reset_index(drop=True)
+
+        if (max_range["High"].loc[0]/slice_data["Close"].loc[index]) > 1.005:
+            max_unix = max_range["Unix"].loc[0]
+        if (min_range["Low"].loc[0]/slice_data["Close"].loc[index]) < 0.995:
+            min_unix = min_range["Unix"].loc[0]
+
+        # Encoding max/min state to easily code below which one was encountered first  
+        state_max = 0
+        state_min = 0
+        if max_unix != None:
+            state_max = 1
+        if min_unix != None:
+            state_min = 1
+            
+        state = 2*state_max + state_min
+
+        if state == 0:
+            if slice_data.loc[index+target_range,"Close"] > slice_data.loc[index,"Close"]:
+                first = 1
+            else:
+                first = -1
+        elif state == 1:
+            first = -2
+        elif state == 2:
+            first = 2
+        else:
+            if min_unix < max_unix:
+                first = -2
+            else:
+                first = 2           
+
+        #predict_data.at[index, "Target"] = first
+        target[index] = first
+        
+        if index % 1000 == 0:
+            print("Itération {}/{}".format(index, size), end='\r')
+
+    predict_data["Target"] = target
+    predict_data["Target1"] = (
+        data["Close"].shift(-target_range) - data["Close"] >= 0)
+    predict_data["Target1"] = np.where(predict_data["Target1"] == True, 1, 0)
+    predict_data["Target_Variation"] = (
+        data["Close"].shift(-target_range) - data["Close"])/data["Close"]
+    predict_data.dropna(inplace=True)
+    predict_data.reset_index(inplace=True, drop=True)
+    predict_data = predict_data[0:len(predict_data)-target_range]
+
+    return predict_data
+
+def meta_labeling_process_par(data,index,target_range):
+    rows = data.shape[0]
+    if index > rows - (target_range+1):
+        return np.nan
+    slice_data = data[index:index+target_range+1]
+    #max_range = data[["Unix","High"]].loc[data["High"] == data["High"][index:index+max_days-1].max()].reset_index(drop=True)
+    #min_range = data[["Unix","Low"]].loc[data["Low"] == data["Low"][index:index+max_days-1].min()].reset_index(drop=True)
+    max_unix = None
+    min_unix = None
+    first = None
+
+    max_range = slice_data[["Unix", "High"]].loc[slice_data["High"]
+                                                    == slice_data["High"].max()].reset_index(drop=True)
+    min_range = slice_data[["Unix", "Low"]].loc[slice_data["Low"]
+                                                == slice_data["Low"].min()].reset_index(drop=True)
+
+    if (max_range["High"].loc[0]/slice_data["Close"].loc[index]) > 1.005:
+        max_unix = max_range["Unix"].loc[0]
+    if (min_range["Low"].loc[0]/slice_data["Close"].loc[index]) < 0.995:
+        min_unix = min_range["Unix"].loc[0]
+
+    # Encoding max/min state to easily code below which one was encountered first  
+    state_max = 0
+    state_min = 0
+    if max_unix != None:
+        state_max = 1
+    if min_unix != None:
+        state_min = 1
+        
+    state = 2*state_max + state_min
+
+    if state == 0:
+        if slice_data.loc[index+target_range,"Close"] > slice_data.loc[index,"Close"]:
+            first = 1
+        else:
+            first = -1
+    elif state == 1:
+        first = -2
+    elif state == 2:
+        first = 2
+    else:
+        if min_unix < max_unix:
+            first = -2
+        else:
+            first = 2           
+
+    if index % 1000 == 0:
+        print("Itération {}/{}".format(index, data.shape[0]), end='\r')
+
+    return first
+    
+    
+
+def meta_labeling_2_par(data, max_days, target_range):
+    predict_data = data.copy().drop(["Open", "Close", "High", "Low", "Symbol"], axis=1)
+    size = data.shape[0]
+    first = None
+    for i in range(1, max_days):  # 2jours
+        predict_data[["Variation-{}".format(i), "RSI-{}".format(i), "MACD-{}".format(
+            i), "MACD_H-{}".format(i)]] = data[["Variation", "RSI", "MACD", "MACD_H"]].shift(i)
+
+    target = np.zeros(size)
+    # Try to parallelize later
+    #indexes = [i for i in range(size)]
+        
+    args = [(data,i,target_range) for i in data.index]
+    
+    pool = Pool(os.cpu_count())
+    
+    print("Parallelizing Meta Labeling, using {} threads...".format(os.cpu_count()))
+        
+    target = pool.starmap(meta_labeling_process_par, args)
+
+    predict_data["Target"] = target
     predict_data["Target1"] = (
         data["Close"].shift(-target_range) - data["Close"] >= 0)
     predict_data["Target1"] = np.where(predict_data["Target1"] == True, 1, 0)
@@ -106,20 +266,31 @@ def create_predict_data(data, max_days=30, target_range=10, standard=True):
         try:
             
             predict_data = pd.read_csv("processed_data/processed_1m_{}_{}.csv".format(max_days,target_range))
-            predict_data.drop("Target1", axis=1, inplace=True)
-                        
-            if -1 in predict_data["Target"].values:
+            #predict_data.drop("Target1", axis=1, inplace=True)
+            
+            if -2 in predict_data["Target"].values:
+                predict_data["Prediction"] = predict_data["Prediction"].replace(2,3)    
+                predict_data["Prediction"] = predict_data["Prediction"].replace(1,2)
+                predict_data["Prediction"] = predict_data["Prediction"].replace(-1,1)
+                predict_data["Prediction"] = predict_data["Prediction"].replace(-2,0)
+            elif -1 in predict_data["Target"].values:
                 predict_data["Target"] = predict_data["Target"].replace(1, 2)
                 predict_data["Target"] = predict_data["Target"].replace(0, 1)
                 predict_data["Target"] = predict_data["Target"].replace(-1, 0)
         except:
             read = False
-            predict_data = meta_labeling(data, max_days, target_range)
-            predict_data.drop("Target1", axis=1, inplace=True)
-            if -1 in predict_data["Target"].values:
+            predict_data = meta_labeling_2_par(data, max_days, target_range)
+            #predict_data.drop("Target1", axis=1, inplace=True)
+            if -2 in predict_data["Target"].values:
+                predict_data["Prediction"] = predict_data["Prediction"].replace(2,3)    
+                predict_data["Prediction"] = predict_data["Prediction"].replace(1,2)
+                predict_data["Prediction"] = predict_data["Prediction"].replace(-1,1)
+                predict_data["Prediction"] = predict_data["Prediction"].replace(-2,0)
+            elif -1 in predict_data["Target"].values:
                 predict_data["Target"] = predict_data["Target"].replace(1, 2)
                 predict_data["Target"] = predict_data["Target"].replace(0, 1)
                 predict_data["Target"] = predict_data["Target"].replace(-1, 0)
+        predict_data.drop("Target1", axis=1, inplace=True)
 
     if not read:
         '''
@@ -131,7 +302,8 @@ def create_predict_data(data, max_days=30, target_range=10, standard=True):
             
 
     if (not standard) and (read==False):
-            predict_data.to_csv("processed_data/processed_1m_{}_{}.csv".format(max_days,target_range), index=False)
+        print("Writing Processed Data to memory...")
+        predict_data.to_csv("processed_data/processed_1m_{}_{}.csv".format(max_days,target_range), index=False)
 
     return predict_data
 
@@ -277,6 +449,7 @@ def train_and_return_model_for_2021_2022():
     
     return model
 
+#To finish
 def standardize_new_col(data, cols, means, stds):
     data[cols] = data[cols]
 
@@ -286,14 +459,14 @@ def simple_strategy_backtest(test_set):
     assets = init_assets
     test_set = test_set.copy()
     test_set.reset_index(inplace=True, drop=True)
-    val = 1
-    """
-    if test_set["Target"].nunique() == 2:
-        val = 1
-    else:
-        val = 1
-    """
-    backtest_set = test_set.loc[test_set["Prediction"] == 1]
+    val = [1]
+    
+    if test_set["Target"].nunique() in [2,3]:
+        val = [1]
+    elif test_set["Target"].nunique() == 4:
+        val = [1,2]
+        
+    backtest_set = test_set.loc[test_set["Prediction"] in val]
     backtest_set["Assets"] = 100
     backtest_set.reset_index(inplace=True, drop=True)
     backtest_set_assets = [0 for i in range(len(backtest_set))]
@@ -308,7 +481,7 @@ def simple_strategy_backtest(test_set):
     print("Value of assets at the end of simple strategy : {}".format(assets))
     N = np.arange(0,len(backtest_set_assets))
     plt.figure(figsize=[20,10])
-    plt.plot(N[0:1000],backtest_set_assets[0:1000],label="Évolution du portefeuille")
+    plt.plot(N,backtest_set_assets,label="Évolution du portefeuille")
     plt.show()
 
 if __name__ == "__main__":
@@ -332,16 +505,20 @@ if __name__ == "__main__":
 
     shape = (len(test_data.columns),)
     
+    print("Shape of inputs for ML algorithm : {}".format(shape))
+    
     train_set = train_data.copy()
     train_set["Target"] = train_labels
     
     #Sampling same number of elements for each class to ensure no one is more likely to be found
     if not standard_labels:
         print("\nData points in training set before sampling :", len(train_set))
-        
-        train_data,train_labels = sample_equal_target(train_set)
-        print("\nData points in training set after sampling :", len(train_labels))
-        train_data.drop("Target",axis=1,inplace=True)
+        try:
+            train_data,train_labels = sample_equal_target(train_set)
+            print("\nData points in training set after sampling :", len(train_labels))
+            train_data.drop("Target",axis=1,inplace=True)
+        except:
+            print("Sampling Failed")
     else:
         print("\nData points in training set :", len(train_set))
     print("\nData points in validation set :", len(test_labels))
@@ -417,10 +594,16 @@ if __name__ == "__main__":
     #Our test set is data2021 (Set to potentially change)
     test_set["Date"] = data_2021["Date"]
     
-    if test_labels.nunique() > 2:
+    if test_labels.nunique() == 3:
         test_set["Prediction"] = test_set["Prediction"].replace(0,-1)
         test_set["Prediction"] = test_set["Prediction"].replace(1,0)
         test_set["Prediction"] = test_set["Prediction"].replace(2,1)
+    
+    elif test_labels.nunique() == 4:
+        test_set["Prediction"] = test_set["Prediction"].replace(0,-2)
+        test_set["Prediction"] = test_set["Prediction"].replace(1,-1)
+        test_set["Prediction"] = test_set["Prediction"].replace(2,1)
+        test_set["Prediction"] = test_set["Prediction"].replace(3,2)
     
     """
     mean_gain = np.mean(np.abs(test_set["Target_Variation"].loc[test_set["Prediction"] == test_set["Target"]]))
