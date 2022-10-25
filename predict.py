@@ -8,7 +8,7 @@ import data_processing
 from multiprocessing import Pool
 import os
 
-#USE PANDAS-TA LIB FOR ADDING TECHNICAL INDICATORS
+#TODO USE PANDAS-TA LIB FOR ADDING TECHNICAL INDICATORS
 
 max_days = 30
 target_range = 10
@@ -271,10 +271,10 @@ def create_predict_data(data, max_days=30, target_range=10, standard=True):
             #predict_data.drop("Target1", axis=1, inplace=True)
             
             if -2 in predict_data["Target"].values:
-                predict_data["Prediction"] = predict_data["Prediction"].replace(2,3)    
-                predict_data["Prediction"] = predict_data["Prediction"].replace(1,2)
-                predict_data["Prediction"] = predict_data["Prediction"].replace(-1,1)
-                predict_data["Prediction"] = predict_data["Prediction"].replace(-2,0)
+                predict_data["Target"] = predict_data["Target"].replace(2,3)    
+                predict_data["Target"] = predict_data["Target"].replace(1,2)
+                predict_data["Target"] = predict_data["Target"].replace(-1,1)
+                predict_data["Target"] = predict_data["Target"].replace(-2,0)
             elif -1 in predict_data["Target"].values:
                 predict_data["Target"] = predict_data["Target"].replace(1, 2)
                 predict_data["Target"] = predict_data["Target"].replace(0, 1)
@@ -284,15 +284,16 @@ def create_predict_data(data, max_days=30, target_range=10, standard=True):
             predict_data = meta_labeling_2_par(data, max_days, target_range)
             #predict_data.drop("Target1", axis=1, inplace=True)
             if -2 in predict_data["Target"].values:
-                predict_data["Prediction"] = predict_data["Prediction"].replace(2,3)    
-                predict_data["Prediction"] = predict_data["Prediction"].replace(1,2)
-                predict_data["Prediction"] = predict_data["Prediction"].replace(-1,1)
-                predict_data["Prediction"] = predict_data["Prediction"].replace(-2,0)
+                predict_data["Target"] = predict_data["Target"].replace(2,3)    
+                predict_data["Target"] = predict_data["Target"].replace(1,2)
+                predict_data["Target"] = predict_data["Target"].replace(-1,1)
+                predict_data["Target"] = predict_data["Target"].replace(-2,0)
             elif -1 in predict_data["Target"].values:
                 predict_data["Target"] = predict_data["Target"].replace(1, 2)
                 predict_data["Target"] = predict_data["Target"].replace(0, 1)
                 predict_data["Target"] = predict_data["Target"].replace(-1, 0)
         predict_data.drop("Target1", axis=1, inplace=True)
+
 
     if not read:
         '''
