@@ -292,8 +292,10 @@ def create_predict_data(data, max_days=30, target_range=10, standard=True):
                 predict_data["Target"] = predict_data["Target"].replace(1, 2)
                 predict_data["Target"] = predict_data["Target"].replace(0, 1)
                 predict_data["Target"] = predict_data["Target"].replace(-1, 0)
-        predict_data.drop("Target1", axis=1, inplace=True)
-
+        try:
+            predict_data.drop("Target1", axis=1, inplace=True)
+        except:
+            pass
 
     if not read:
         '''
@@ -375,9 +377,9 @@ def train_and_return_model_for_2021_2022():
     
     train_set = train_data.copy()
     train_set["Target"] = train_labels
-    
+        
     #Sampling same number of elements for each class to ensure no one is more likely to be found
-    if not standard_labels:
+    if (not standard_labels) and (train_labels.nunique() == 3):
         print("\nData points in training set before sampling :", len(train_set))
         
         train_data,train_labels = sample_equal_target(train_set)
@@ -469,7 +471,7 @@ def simple_strategy_backtest(test_set):
     elif test_set["Target"].nunique() == 4:
         val = [1,2]
         
-    backtest_set = test_set.loc[test_set["Prediction"] in val]
+    backtest_set = test_set.loc[test_set["Prediction"].isin(val)]
     backtest_set["Assets"] = 100
     backtest_set.reset_index(inplace=True, drop=True)
     backtest_set_assets = [0 for i in range(len(backtest_set))]
@@ -514,7 +516,7 @@ if __name__ == "__main__":
     train_set["Target"] = train_labels
     
     #Sampling same number of elements for each class to ensure no one is more likely to be found
-    if not standard_labels:
+    if (not standard_labels):
         print("\nData points in training set before sampling :", len(train_set))
         try:
             train_data,train_labels = sample_equal_target(train_set)
