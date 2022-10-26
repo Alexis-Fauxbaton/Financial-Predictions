@@ -7,6 +7,7 @@ from datetime import datetime
 import data_processing
 from multiprocessing import Pool
 import os
+import imblearn
 
 #TODO USE PANDAS-TA LIB FOR ADDING TECHNICAL INDICATORS
 
@@ -519,11 +520,13 @@ if __name__ == "__main__":
     if (not standard_labels):
         print("\nData points in training set before sampling :", len(train_set))
         try:
-            train_data,train_labels = sample_equal_target(train_set)
+            #train_data,train_labels = sample_equal_target(train_set)
+            sm = imblearn.over_sampling.SMOTE(random_state=42)
+            train_data, train_labels = sm.fit_resample(train_set, train_labels)
             print("\nData points in training set after sampling :", len(train_labels))
             train_data.drop("Target",axis=1,inplace=True)
-        except:
-            print("Sampling Failed")
+        except Exception as e:
+            print("Sampling Failed, Reason : {}".format(e))
     else:
         print("\nData points in training set :", len(train_set))
     print("\nData points in validation set :", len(test_labels))
