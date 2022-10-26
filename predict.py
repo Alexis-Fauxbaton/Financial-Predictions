@@ -582,7 +582,10 @@ if __name__ == "__main__":
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
 
     #model training
-    model.fit(train_data, train_labels, epochs=epochs, validation_data=(test_data,test_labels),callbacks=[tensorboard_callback], batch_size=64)
+#    model.fit(train_data, train_labels, epochs=epochs, validation_data=(test_data,test_labels),callbacks=[tensorboard_callback], batch_size=64)
+    model.fit(train_data, train_labels, epochs=epochs, validation_split=0.2, callbacks=[tensorboard_callback], batch_size=64)
+    
+    model.evaluate(test_data, test_labels)
     
     probs = model.predict(test_data)
     
