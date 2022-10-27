@@ -201,7 +201,6 @@ def process_minute_data(write=True):
     data["Variation"] = (
         data["Close"] - data["Close"].shift(1)) / data["Close"].shift(1)
     data = add_rsi(data)
-    print("RSI infos : {}/{}".format(data["RSI"].mean(), data["RSI"].std()))
     data = add_macd(data)
     data = add_adx(data)
     #data.drop("Adj Close",axis=1,inplace=True)
