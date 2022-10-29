@@ -490,11 +490,20 @@ def simple_strategy_backtest(test_set):
     plt.plot(N,backtest_set_assets,label="Évolution du portefeuille")
     plt.show()
 
+def main():
+    handler = data_processing.DataHandler("minute_data/BTC-USD_1M_SIGNALS.csv")
+    
+    handler.fit_predict(labeling = False, equal_sampling=True, sampling_method="smote")
+    pass
+
 if __name__ == "__main__":
+
+    main()
+    
+    raise Exception()
 
     # In case we need this to get mean and std from columns to normalize new data
     #raw_data = pd.read_csv("minute_data/BTC-USD_1m.csv")
-
     data = pd.read_csv("minute_data/BTC-USD_1M_SIGNALS.csv")
 
     standard_labels = False
