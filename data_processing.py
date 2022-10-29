@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 from datetime import timedelta
 import requests
+import pandas_ta as ta
 
 pd.set_option('display.max_rows', 500)
 
@@ -47,6 +48,7 @@ def add_adx(df: pd.DataFrame(), interval: int = 14):
     del df['DI'+str(interval)], df['-DMI'+str(interval)]
     del df['+DI'+str(interval)], df['-DI'+str(interval)]
     del df['DX']
+    df.rename({'ADX'+str(interval) : 'ADX_'+str(interval)})
     return df
 
 
@@ -118,6 +120,9 @@ def add_rsi (data, time_window=14):
     rsi = 100 - 100/(1+rs)
     data["RSI"] = rsi
     return data    
+    
+    
+    #data.ta.rsi(cumulative=True, append=True)
 
 
 def add_macd(data):
