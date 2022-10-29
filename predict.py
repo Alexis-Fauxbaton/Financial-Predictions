@@ -131,7 +131,7 @@ def meta_labeling_2(data, max_days, target_range):
         if (min_range["Low"].loc[0]/slice_data["Close"].loc[index]) < 0.995:
             min_unix = min_range["Unix"].loc[0]
 
-        # Encoding max/min state to easily code below which one was encountered first  
+        # Encoding max/min state to easily code below which one was encountered first
         state_max = 0
         state_min = 0
         if max_unix != None:

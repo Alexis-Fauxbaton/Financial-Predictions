@@ -7,49 +7,61 @@ from datetime import datetime
 from datetime import timedelta
 import requests
 import pandas_ta as ta
+from sklearn.preprocessing import StandardScaler
 
 pd.set_option('display.max_rows', 500)
 
 # Only processes 1m data for now
 
+def add_adx(data, interval=14):
+    #data.ta.adx(cumulative=True, append=True)
+    adx_cols = ta.adx(data["High"], data["Low"], data["Close"], length=interval)
+    
+    adx_cols = adx_cols.rename({"DMP_14":"+DM", "DMN_14":"-DM"})
+    
+    data = data.join(adx_cols)
+    
+    return data
 
-def add_adx(df: pd.DataFrame(), interval: int = 14):
-    df['-DM'] = df['Low'].shift(1) - df['Low']
-    df['+DM'] = df['High'] - df['High'].shift(1)
-    df['+DM'] = np.where((df['+DM'] > df['-DM']) &
-                         (df['+DM'] > 0), df['+DM'], 0.0)
-    df['-DM'] = np.where((df['-DM'] > df['+DM']) &
-                         (df['-DM'] > 0), df['-DM'], 0.0)
-    df['TR_TMP1'] = df['High'] - df['Low']
-    if "Adj Close" in df.columns:
-        df['TR_TMP2'] = np.abs(df['High'] - df['Adj Close'].shift(1))
-        df['TR_TMP3'] = np.abs(df['Low'] - df['Adj Close'].shift(1))
-    else:
-        df['TR_TMP2'] = np.abs(df['High'] - df['Close'].shift(1))
-        df['TR_TMP3'] = np.abs(df['Low'] - df['Close'].shift(1))
-    df['TR'] = df[['TR_TMP1', 'TR_TMP2', 'TR_TMP3']].max(axis=1)
-    df['TR'+str(interval)] = df['TR'].rolling(interval).sum()
-    df['+DMI'+str(interval)] = df['+DM'].rolling(interval).sum()
-    df['-DMI'+str(interval)] = df['-DM'].rolling(interval).sum()
-    df['+DI'+str(interval)] = df['+DMI'+str(interval)] / \
-        df['TR'+str(interval)]*100
-    df['-DI'+str(interval)] = df['-DMI'+str(interval)] / \
-        df['TR'+str(interval)]*100
-    df['DI'+str(interval)+'-'] = abs(df['+DI'+str(interval)] -
-                                     df['-DI'+str(interval)])
-    df['DI'+str(interval)] = df['+DI'+str(interval)] + df['-DI'+str(interval)]
-    df['DX'] = (df['DI'+str(interval)+'-'] / df['DI'+str(interval)])*100
-    df['ADX'+str(interval)] = df['DX'].rolling(interval).mean()
-    df['ADX'+str(interval)] = df['ADX'+str(interval)
-                                 ].fillna(df['ADX'+str(interval)].mean())
-    del df['TR_TMP1'], df['TR_TMP2'], df['TR_TMP3'], df['TR'], df['TR' +
-                                                                  str(interval)]
-    del df['+DMI'+str(interval)], df['DI'+str(interval)+'-']
-    del df['DI'+str(interval)], df['-DMI'+str(interval)]
-    del df['+DI'+str(interval)], df['-DI'+str(interval)]
-    del df['DX']
-    df.rename({'ADX'+str(interval) : 'ADX_'+str(interval)})
-    return df
+def add_rsi(data, interval=14):
+    rsi = ta.rsi(data["Close"], length=interval)
+    
+    rsi = rsi.rename("RSI")
+    
+    data = data.join(rsi)
+    
+    return data
+    
+def add_macd(data, interval=14):
+    macd = ta.macd(data["Close"])
+    
+    macd = macd.drop("MACDs_12_26_9", axis=1)
+    
+    macd = macd.rename({"MACD_12_26_9":"MACD", "MACDh_12_26_9":"MACD_H"})
+    
+    data = data.join(macd)
+    
+    return data
+
+def add_log_return(data, interval=1):
+    log_r = ta.log_return(data["Close"], length=interval)
+
+    log_r = log_r.rename("LOG_RETURN")
+    
+    data = data.join(log_r)
+    
+def add_percent_return(data, interval=1):
+    percent_r = ta.percent_return(data["Close"], length=interval)
+    
+    percent_r = percent_r.rename("PERCENT_RETURN")
+    
+    data = data.join(percent_r)
+    
+    return data
+
+
+
+###################################################### INDICATORS FOR HIGHER TIMEFRAMES #################################################################
 
 
 def fear_and_greed():
@@ -68,76 +80,6 @@ def fear_and_greed():
     fng.rename(columns={"timestamp": "Date", "value": "FnG"}, inplace=True)
 
     return fng.drop(["time_until_update", "value_classification"], axis=1)
-
-"""
-def add_rsi(data):
-    df = data.copy()
-
-    df["Gains"] = df["Variation"] * (df["Variation"] >= 0)
-    df["Losses"] = df["Variation"] * (df["Variation"] < 0)
-    df["Avg Gain"] = df["Gains"].rolling(14).mean()
-    df["Avg Loss"] = df["Losses"].rolling(14).mean()
-    for i in range(14):
-        df["Avg Gain"].loc[i] = df["Gains"][0:i].mean()
-        df["Avg Loss"].loc[i] = df["Losses"][0:i].mean()
-
-    df["Avg Loss"] = -1 * df["Avg Loss"]
-
-    df['RSI'] = 0
-
-    # df['RSI'] = 100 - (100 / (1 + ))
-
-    df['RSI'] = 100 - (100 / (1 + df['Avg Gain'] / df['Avg Loss']))
-
-    df = df.drop(["Gains", "Losses", "Avg Gain", "Avg Loss"], axis=1)
-
-    #df['RSI'].loc[0:14] = 100 - (100 / (1 + df['Avg Gain'].loc[0:14] / df['Avg Loss'].loc[0:14]))
-
-    return df
-    """
-    
-def add_rsi (data, time_window=14):
-    diff = data["Close"].diff(1).dropna()        # diff in one field(one day)
-
-    #this preservers dimensions off diff values
-    up_chg = 0 * diff
-    down_chg = 0 * diff
-    
-    # up change is equal to the positive difference, otherwise equal to zero
-    up_chg[diff > 0] = diff[ diff>0 ]
-    
-    # down change is equal to negative deifference, otherwise equal to zero
-    down_chg[diff < 0] = diff[ diff < 0 ]
-    
-    # check pandas documentation for ewm
-    # https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.ewm.html
-    # values are related to exponential decay
-    # we set com=time_window-1 so we get decay alpha=1/time_window
-    up_chg_avg   = up_chg.ewm(com=time_window-1 , min_periods=time_window).mean()
-    down_chg_avg = down_chg.ewm(com=time_window-1 , min_periods=time_window).mean()
-    
-    rs = abs(up_chg_avg/down_chg_avg)
-    rsi = 100 - 100/(1+rs)
-    data["RSI"] = rsi
-    return data    
-    
-    
-    #data.ta.rsi(cumulative=True, append=True)
-
-
-def add_macd(data):
-    df = data.copy()
-
-    df['MACD'] = df["Close"].ewm(span=12, adjust=False).mean(
-    ) - df["Close"].ewm(span=26, adjust=False).mean()
-
-    df['MACD_SIGNAL'] = df["MACD"].ewm(span=9, adjust=False).mean()
-
-    df['MACD_H'] = df["MACD"] - df["MACD_SIGNAL"]
-
-    df.drop(["MACD_SIGNAL"], axis=1, inplace=True)
-
-    return df
 
 
 def confirmation_time(data):
@@ -184,6 +126,56 @@ def standardize_col(data, col):
     return df
 
 
+############################################################ DATA HANDLER CLASS ######################################################################
+
+class DataHandler:
+    def __init__(self, csv_path=None):
+        self.data_scaler = None
+        if csv_path == None:
+            self.data = None
+        else:
+            try:
+                self.data = pd.read_csv(csv_path)
+                self.data.sort_values(by="Unix", ascending=True, inplace=True, ignore_index=True)
+                #TODO ADD CODE TO DETERMINE TIMEFRAME FROM DIFFERENCE IN TIME BETWEEN TWO FIRST ELEMENTS OF DATA
+                self.timeframe = ''
+            except:
+                print("Failed to import data from path {}".format(csv_path))
+                
+                
+    def head(self):
+        if self.data != None:
+            print(self.data.head())
+            
+    def load(self, csv_path):
+        del self.data
+        
+        print("Successfully deleted old data")
+        
+        try:
+            self.data = pd.read_csv(csv_path)
+        except:
+            print("Failed to import data at path {}".format(csv_path))
+            
+    def get_data(self):
+        return self.data
+    
+    def add_indicators(self):
+        self.data = add_percent_return(self.data)
+        self.data = add_log_return(self.data)
+        self.data = add_rsi(self.data)
+        self.data = add_macd(self.data)
+        self.data = add_adx(self.data)
+    
+    def standardize_indicators(self, method="standard"):
+        self.columns_to_scale = ["Volume USD", "MACD", "MACD_H", "RSI", "PERCENT_RETURN", "LOG_RETURN", "ADX14", "-DM", "+DM"]
+        if method == "standard":
+            if self.data_scaler == None:
+                self.data_scaler = StandardScaler()
+            self.data[self.columns_to_scale] = self.data_scaler.fit_transform(self.data[self.columns_to_scale])
+
+
+
 def merge_1m():
     data2017 = pd.read_csv("minute_data/BTC-2017min.csv")
     data2018 = pd.read_csv("minute_data/BTC-2018min.csv")
@@ -203,13 +195,13 @@ def process_minute_data(write=True):
 
     data = pd.read_csv("minute_data/BTC-USD_1m.csv")
     data.sort_values(by="Unix", ascending=True, inplace=True, ignore_index=True)
-    data["Variation"] = (
-        data["Close"] - data["Close"].shift(1)) / data["Close"].shift(1)
+    data = add_percent_return(data)
+    data = add_log_return(data)
     data = add_rsi(data)
     data = add_macd(data)
     data = add_adx(data)
     #data.drop("Adj Close",axis=1,inplace=True)
-    columns_to_standardize = ["Volume USD", "MACD", "MACD_H", "RSI", "Variation", "ADX14", "-DM", "+DM"]
+    columns_to_standardize = ["Volume USD", "MACD", "MACD_H", "RSI", "PERCENT_RETURN", "LOG_RETURN", "ADX14", "-DM", "+DM"]
     means, std = data[columns_to_standardize].mean(), data[columns_to_standardize].std()
     
     '''
