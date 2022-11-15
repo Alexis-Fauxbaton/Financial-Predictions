@@ -4,10 +4,11 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
+from torch.distributions import Normal
 
-class PPO(nn.Module):
+class ActorCritic(nn.Module):
     def __init__(self, input_size, output_size):
-        super(PPO, self).__init__()
+        super(ActorCritic, self).__init__()
 
         self.actor = nn.Sequential(
             nn.Linear(input_size, 2*input_size),
@@ -24,8 +25,24 @@ class PPO(nn.Module):
             nn.Softmax(),
         )
         
-        self.critic = None
+        self.critic = nn.Sequential(
+            nn.Linear(input_size, 2*input_size),
+            nn.ReLU(),
+            nn.Linear(2*input_size, 4*input_size),
+            nn.ReLU(),
+            nn.Linear(4*input_size, 8*input_size),
+            nn.ReLU(),
+            nn.Linear(8*input_size, 4*input_size),
+            nn.ReLU(),
+            nn.Linear(4*input_size, 2*input_size),
+            nn.ReLU(),
+            nn.Linear(2*input_size, 1)
+        )
 
+    
+    def forward(self, x):
+        value = self.critic(x)
+        
 
 
 
