@@ -146,7 +146,7 @@ def standard_labeling(data, max_days, target_range):
         #self.predict_data[["Variation-{}".format(i),"Vol-{}".format(i),"RSI-{}".format(i),"MACD-{}".format(i),"MACD_H-{}".format(i),"CONF-{}".format(i),"TRANS-{}".format(i),"REV-{}".format(i),"FnG-{}".format(i)]] = data[["Variation","Volume","RSI","MACD","MACD_H","Confirmation Time","Transactions","Miners Revenue","FnG"]].shift(i)
         #self.predict_data[["Variation-{}".format(i),"Vol-{}".format(i),"RSI-{}".format(i),"MACD-{}".format(i),"MACD_H-{}".format(i),"CONF-{}".format(i),"TRANS-{}".format(i),"REV-{}".format(i),"FnG-{}".format(i), "ADX-{}".format(i), "+DM-{}".format(i), "-DM-{}".format(i)]] = data[["Variation","Volume","RSI","MACD","MACD_H","Confirmation Time","Transactions","Miners Revenue","FnG","ADX14","+DM","-DM"]].shift(i)
         predict_data[["Variation-{}".format(i), "RSI-{}".format(i), "MACD-{}".format(
-            i), "MACD_H-{}".format(i)]] = data[["Variation", "RSI", "MACD", "MACD_H"]].shift(i)
+            i), "MACD_H-{}".format(i), "Regime-{}".format(i)]] = data[["Variation", "RSI", "MACD", "MACD_H", "Regime"]].shift(i)
     #self.predict_data["Target"] = (data["Variation"].shift(-1) >= 0)
     predict_data["Target"] = (
         data["Close"].shift(-target_range) - data["Close"] >= 0)
@@ -219,7 +219,7 @@ def meta_labeling_2_par(data, max_days, target_range):
     first = None
     for i in range(1, max_days):  # 2jours
         predict_data[["Variation-{}".format(i), "RSI-{}".format(i), "MACD-{}".format(
-            i), "MACD_H-{}".format(i)]] = data[["Variation", "RSI", "MACD", "MACD_H"]].shift(i)
+            i), "MACD_H-{}".format(i), "Regime-{}".format(i)]] = data[["Variation", "RSI", "MACD", "MACD_H", "Regime"]].shift(i)
 
     target = np.zeros(size)
     # Try to parallelize later
@@ -399,16 +399,23 @@ class DataHandler:
     def get_data(self):
         return self.data
 
+    def get_predict_data(self):
+        return self.predict_data
+
+    def plot(self, x, y):
+        self.data.plot(x, y, figsize=[20,10])
+        return
+
     def add_indicators(self):
         self.data = add_percent_return(self.data)
         self.data = add_log_return(self.data)
         self.data = add_rsi(self.data)
         self.data = add_macd(self.data)
         self.data = add_adx(self.data)
-        
 
     #Assess different market regimes
     def add_gaussian_mixture(self):
+        data = self.data.copy()[[i%10 == 0 for i in range(len(self.data))]]
         if self.max_days == None:
             raise ("Error, lookback prediction interval has not been initialized")
         else:
@@ -518,12 +525,13 @@ class DataHandler:
         train_data, train_labels, test_data, test_labels, test_variation = yearly_custom_splitter(
         train_data, test_data)
         
-        train_data["Target"] = train_labels
-        
-        if equal_sampling:
-            train_data, train_labels = sample_equal_target(train_data, method=sampling_method)
-        else:
-            train_data, train_labels = train_data.drop("Target", axis=1), train_data["Target"]
+        if sampling_method != 'none':
+            if equal_sampling:
+                train_data["Target"] = train_labels
+                train_data, train_labels = sample_equal_target(train_data, method=sampling_method)
+            #TODO Remove ?
+            else:
+                train_data, train_labels = train_data.drop("Target", axis=1), train_data["Target"]
             
         #test_data, test_labels = test_data.drop("Target", axis=1), test_data["Target"]
         
@@ -531,7 +539,7 @@ class DataHandler:
         
         shape = (len(test_data.columns),)
     
-        print("Shape of inputs for ML algorithm : {}".format(shape))    
+        print("Shape of inputs for ML algorithm : {}".format(shape))
         
         if outputs == 2:
         
