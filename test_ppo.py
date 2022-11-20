@@ -1,5 +1,7 @@
 from a2c import *
 from RL_env import *
+from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3 import PPO
 
 
 if __name__ == "__main__":
@@ -14,6 +16,8 @@ if __name__ == "__main__":
     removed_cols = ["Open", "Low", "Close", "High", "Unix", "Symbol", "Date"]
     
     
+    #env = DummyVecEnv([lambda:TradingEnv(data)])
+
     env = TradingEnv(data)
 
     input_size = env.lookback * (len(data.columns) - len(removed_cols)) + 2 #2 for balance and shares held
@@ -24,4 +28,17 @@ if __name__ == "__main__":
     
     ppo = ActorCritic(input_size, OUTPUT_SIZE)
     
-    ppo.train(env, 10, env.max_steps)
+    ppo.train(env, 1000, env.max_steps)
+    
+    '''
+    env = gym.make('FrozenLake-v1', desc=None, map_name="4x4", is_slippery=True)
+
+    ppo = ActorCritic(1, 4)
+    
+    ppo.train(env, 100)
+    '''
+    
+    #ppo = PPO("MlpPolicy", env, verbose=1)
+    
+    #ppo.learn(total_timesteps=10_000)
+    

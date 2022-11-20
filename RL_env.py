@@ -11,10 +11,12 @@ OUTPUT_SIZE = 7
 class TradingEnv(gym.Env):
     metadata = {'render.modes': ['human']}
     
-    def __init__(self, data, lookback=30, max_steps=10):
+    def __init__(self, data, lookback=30, max_steps=300):
         super(TradingEnv).__init__()
         
         self.data = data
+        cpy_data = self.data.copy().drop(["Open", "Low", "Close", "High", "Unix", "Symbol", "Date"], axis=1)
+        self.features = cpy_data.columns
         self.lookback = lookback
         self.max_steps = max_steps
         #Define the number of possible actions here
@@ -46,9 +48,9 @@ class TradingEnv(gym.Env):
         return self._next_observation()
     
     def _next_observation(self):
-        cpy_data = self.data.copy().drop(["Open", "Low", "Close", "High", "Unix", "Symbol", "Date"], axis=1)
-        #frame = np.array(self.data.loc[self.current_step:self.current_step-self.lookback,cpy_data.columns])
-        frame = self.data.loc[self.current_step-self.lookback+1:self.current_step,cpy_data.columns]
+        #cpy_data = self.data.copy().drop(["Open", "Low", "Close", "High", "Unix", "Symbol", "Date"], axis=1)
+        #frame = self.data.loc[self.current_step-self.lookback+1:self.current_step,cpy_data.columns]
+        frame = self.data.loc[self.current_step-self.lookback+1:self.current_step,self.features]
         #print(frame)
         
         #print([self.balance, self.shares_held])
@@ -62,24 +64,25 @@ class TradingEnv(gym.Env):
         
         self._take_action(action)
         
+        done = 0
+        
+        if self.current_step >= self.data.shape[0] or ((self.current_step_idx + 1) % self.max_steps == 0):
+            done = 1
+        elif (self.net_worth <= 0):
+            done =  1
+            
+        discount = (((self.current_step_idx % self.max_steps) + 1) / self.max_steps) * (9e-5)**self.current_step_idx
+        
+        reward = discount * self.net_worth - self.current_step_idx * self.holding
+        
         self.current_step += 1
         self.current_step_idx += 1
         
-        if self.current_step >= self.data.shape[0]:
-            done = True
-        else:
-            done = self.net_worth <= 0
-            
-        discount = (self.current_step_idx % self.max_steps) / self.max_steps
-        
-        reward = discount * self.net_worth
-        
-        '''
-        print("Env Reward : ", reward)
-        print("Env net worth : ", self.net_worth)
-        print("Env discount : ", discount)
-        print("Env step idx : ", self.current_step_idx)
-        '''
+        if self.current_step_idx+1 % 50 == 0:
+            print("Step ", self.current_step)
+            print("Balance :", self.balance)
+            print("Shares :", self.shares_held)
+            print("Net Worth :", self.net_worth)
         
         obs = self._next_observation()
         
@@ -89,7 +92,7 @@ class TradingEnv(gym.Env):
         
         current_price = np.random.uniform(self.data.loc[self.current_step,"Low"], self.data.loc[self.current_step, "High"])
         
-        if self.current_step == 0:
+        if self.current_step_idx == 0:
             self.price_list.append(current_price)
         
         #Convert 10% of balance into asset
@@ -127,6 +130,11 @@ class TradingEnv(gym.Env):
             shares_sold = self.shares_held
             self.shares_held -= shares_sold
             self.balance += shares_sold * current_price
+        
+        if action == 6:
+            self.holding += 1
+        else:
+            self.holding = 0
             
         self.net_worth = self.balance + self.shares_held * current_price
         
@@ -153,6 +161,9 @@ class TradingEnv(gym.Env):
         
         axis[0,1].plot(steps, self.shares_held_list, label="Shares Held")
         axis[0,1].set_title("Evolution of Held Shares")
+        
+        axis[1,1].plot(steps, self.price_list, label="Asset Price")
+        axis[1,1].set_title("Evolution of Asset Price valued against USD")
         
         plt.show()
         

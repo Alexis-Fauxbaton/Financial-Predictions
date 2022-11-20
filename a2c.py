@@ -13,6 +13,9 @@ class ActorCritic(nn.Module):
     def __init__(self, input_size, output_size):
         super(ActorCritic, self).__init__()
 
+        self.input_size = input_size
+        self.output_size = output_size
+
         self.actor = nn.Sequential(
             nn.Linear(input_size, 2*input_size),
             nn.ReLU(),
@@ -88,26 +91,31 @@ class ActorCritic(nn.Module):
         for _ in range(ppo_epochs):
             for state, action, old_log_probs, return_, advantage in self.ppo_iter(mini_batch_size, states, actions, log_probs, returns, advantages):
                 dist, value = self(state)
-                #entropy = dist.entropy().mean()
+                entropy = dist.entropy().mean()
                 new_log_probs = dist.log_prob(action)
 
                 ratio = (new_log_probs - old_log_probs).exp()
+                
+                #print("Ratio : ", ratio)
+                #print("Advantage : ", advantage)
                 surr1 = ratio * advantage
                 surr2 = torch.clamp(ratio, 1.0 - clip_param, 1.0 + clip_param) * advantage
 
                 actor_loss  = - torch.min(surr1, surr2).mean()
                 critic_loss = (return_ - value).pow(2).mean()
 
-                loss = 0.5 * critic_loss + actor_loss #- 0.001 * entropy
+                loss = 0.5 * critic_loss + actor_loss - 0.001 * entropy
 
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
 
-    def train(self, env, epochs=10, steps_per_epoch = 100, lr=0.001, mini_batch_size=32, ppo_epochs=30):
+    def train(self, env, epochs=10, steps_per_epoch = 100, lr=0.001, mini_batch_size=20, ppo_epochs=30): 
         self.optimizer = optim.Adam(self.parameters(), lr=lr)
         
-        state = env.reset()
+        self.env = env
+        
+        state = self.env.reset()
         
         for epoch in range(epochs):
             print("Epoch : ", epoch)
@@ -121,27 +129,27 @@ class ActorCritic(nn.Module):
             
             for step in range(steps_per_epoch):
                 print("Step : ", step, end='\r')
-                state = torch.DoubleTensor(state).to(device)
+                state = torch.DoubleTensor(state).reshape(-1).to(device)
                 dist, value = self.forward(state.detach())
                 
                 action = dist.sample()
                 
-                next_state, reward, done, _ = env.step(action.cpu().numpy())
+                next_state, reward, done, _ = self.env.step(action.cpu().numpy())
                 
                 
                 log_prob = dist.log_prob(action)
                 
                 states.append(state)
-                rewards.append(torch.DoubleTensor([reward]).unsqueeze(1).to(device))
+                rewards.append(torch.DoubleTensor([reward]).reshape(-1).to(device))
                 actions.append(action.reshape(-1))
                 values.append(value)
                 log_probs.append(log_prob.reshape(-1))
-                masks.append(torch.DoubleTensor(1-done).unsqueeze(1).to(device))
+                masks.append(torch.DoubleTensor([1-done]).reshape(-1).to(device))
                 
                 state = next_state
             print("", end='')
             
-            if epoch % 5 == 0:
+            if (epoch+1) % 500 == 0:
                 N = np.arange(steps_per_epoch)
                 '''
                 plt.plot(N, [i.cpu() for i in rewards], label="Rewards")
@@ -149,7 +157,7 @@ class ActorCritic(nn.Module):
                 
                 plt.show()
                 '''
-                #env.render()
+                self.env.render()
                 
             next_state = torch.DoubleTensor(next_state).clone().detach().to(device)
             _, next_value = self.forward(next_state)
@@ -159,12 +167,18 @@ class ActorCritic(nn.Module):
             
             #Detach the tensors that will not be needed for gradient descent to avoid bugs
             states = torch.cat(states)
+            states = states.reshape((steps_per_epoch, self.input_size))
             rewards = torch.cat(rewards).detach()
-            print(actions)
+            '''
+            print("Rewards : ", rewards)
+            print("Returns : ", returns)
+            print("Masks : ", masks)
+            print("Values : ", values)
+            '''
             actions = torch.cat(actions)
             values = torch.cat(values).detach()
             log_probs = torch.cat(log_probs).detach()
-            returns = torch.cat(returns).detach()
+            returns = torch.cat(returns).squeeze().detach()
             advantages = returns - values
             
             self.ppo_update(ppo_epochs, mini_batch_size, states, actions, log_probs, returns, advantages)
