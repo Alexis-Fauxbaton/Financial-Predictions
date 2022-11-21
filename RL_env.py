@@ -63,7 +63,7 @@ class TradingEnv(gym.Env):
     
     def step(self, action):
         
-        action_bonus = self._take_action(action)
+        action_bonus, current_price = self._take_action(action)
         
         done = 0
         
@@ -75,7 +75,10 @@ class TradingEnv(gym.Env):
         discount = (((self.current_step_idx % self.max_steps) + 1) / self.max_steps) * (0.9999)**self.current_step_idx
         discount = 1
         
-        reward = discount * self.net_worth - self.current_step_idx * self.holding + action_bonus
+        weighted_net_worth = 0.3 * self.balance + 0.7 * self.shares_held * current_price
+        
+        #reward = discount * self.net_worth - self.current_step_idx * self.holding + action_bonus
+        reward = discount * weighted_net_worth - self.current_step_idx * self.holding + action_bonus
         
         #print(discount * self.net_worth, - (self.current_step_idx) * self.holding, action_bonus)
         
@@ -154,7 +157,7 @@ class TradingEnv(gym.Env):
         self.net_worth_list.append(self.net_worth)
         self.price_list.append(current_price)
         
-        return reward
+        return reward, current_price
         
     def render(self, mode='human', close=False):
         print("Step ", self.current_step)
