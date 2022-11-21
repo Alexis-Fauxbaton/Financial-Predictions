@@ -21,10 +21,6 @@ class ActorCritic(nn.Module):
             nn.ReLU(),
             nn.Linear(2*input_size, 4*input_size),
             nn.ReLU(),
-            nn.Linear(4*input_size, 8*input_size),
-            nn.ReLU(),
-            nn.Linear(8*input_size, 4*input_size),
-            nn.ReLU(),
             nn.Linear(4*input_size, 2*input_size),
             nn.ReLU(),
             nn.Linear(2*input_size, output_size),
@@ -36,10 +32,6 @@ class ActorCritic(nn.Module):
             nn.Linear(input_size, 2*input_size),
             nn.ReLU(),
             nn.Linear(2*input_size, 4*input_size),
-            nn.ReLU(),
-            nn.Linear(4*input_size, 8*input_size),
-            nn.ReLU(),
-            nn.Linear(8*input_size, 4*input_size),
             nn.ReLU(),
             nn.Linear(4*input_size, 2*input_size),
             nn.ReLU(),
@@ -149,14 +141,15 @@ class ActorCritic(nn.Module):
                 state = next_state
             print("", end='')
             
-            if (epoch+1) % 500 == 0:
-                N = np.arange(steps_per_epoch)
+            if (epoch+1) % 50 == 0:
+                #N = np.arange(steps_per_epoch)
                 '''
                 plt.plot(N, [i.cpu() for i in rewards], label="Rewards")
                 plt.title("Evolution of the rewards at epoch {}".format(epoch))
                 
                 plt.show()
                 '''
+                print("Rewards", rewards)
                 self.env.render()
                 
             next_state = torch.DoubleTensor(next_state).clone().detach().to(device)
@@ -182,3 +175,5 @@ class ActorCritic(nn.Module):
             advantages = returns - values
             
             self.ppo_update(ppo_epochs, mini_batch_size, states, actions, log_probs, returns, advantages)
+            
+            state = self.env.reset()

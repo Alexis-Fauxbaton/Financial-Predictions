@@ -42,6 +42,7 @@ class TradingEnv(gym.Env):
         self.shares_held_list = [self.shares_held]
         self.net_worth_list = [self.net_worth]
         self.price_list = []
+        self.holding = 0
         
         
         
@@ -62,7 +63,7 @@ class TradingEnv(gym.Env):
     
     def step(self, action):
         
-        self._take_action(action)
+        action_bonus = self._take_action(action)
         
         done = 0
         
@@ -71,12 +72,17 @@ class TradingEnv(gym.Env):
         elif (self.net_worth <= 0):
             done =  1
             
-        discount = (((self.current_step_idx % self.max_steps) + 1) / self.max_steps) * (9e-5)**self.current_step_idx
+        discount = (((self.current_step_idx % self.max_steps) + 1) / self.max_steps) * (0.9999)**self.current_step_idx
+        discount = 1
         
-        reward = discount * self.net_worth - self.current_step_idx * self.holding
+        reward = discount * self.net_worth - self.current_step_idx * self.holding + action_bonus
+        
+        #print(discount * self.net_worth, - (self.current_step_idx) * self.holding, action_bonus)
         
         self.current_step += 1
         self.current_step_idx += 1
+        
+        #print("Reward : ", reward)
         
         if self.current_step_idx+1 % 50 == 0:
             print("Step ", self.current_step)
@@ -95,41 +101,46 @@ class TradingEnv(gym.Env):
         if self.current_step_idx == 0:
             self.price_list.append(current_price)
         
-        #Convert 10% of balance into asset
-        if action == 0:
-            shares_bought = (0.1 * self.balance) / current_price
-            self.shares_held += shares_bought
-            self.balance = self.balance * 0.9
+        reward = 0
         
-        #Convert 50% of balance into asset
-        elif action == 1:
-            shares_bought = (0.5 * self.balance) / current_price
-            self.shares_held += shares_bought
-            self.balance = self.balance * 0.5
+        if (self.balance <= 5 and action in [0, 1, 2]) or (self.shares_held * current_price <= 2 and action in [3, 4, 5]):
+            reward = - self.net_worth * 0.5
+        else:        
+            #Convert 10% of balance into asset
+            if action == 0:                 
+                shares_bought = (0.1 * self.balance) / current_price
+                self.shares_held += shares_bought
+                self.balance = self.balance * 0.9
             
-        #Convert 100% of balance into asset            
-        elif action == 2:
-            shares_bought = (1 * self.balance) / current_price
-            self.shares_held += shares_bought
-            self.balance = 0
-        
-        #Convert 10% of shares into balance    
-        elif action == 3:
-            shares_sold = 0.1 * self.shares_held
-            self.shares_held -= shares_sold
-            self.balance += shares_sold * current_price
+            #Convert 50% of balance into asset
+            elif action == 1:
+                shares_bought = (0.5 * self.balance) / current_price
+                self.shares_held += shares_bought
+                self.balance = self.balance * 0.5
+                
+            #Convert 100% of balance into asset            
+            elif action == 2:
+                shares_bought = (1 * self.balance) / current_price
+                self.shares_held += shares_bought
+                self.balance = 0
             
-        #Convert 50% of shares into balance    
-        elif action == 4:
-            shares_sold = 0.5 * self.shares_held
-            self.shares_held -= shares_sold
-            self.balance += shares_sold * current_price
-            
-        #Convert 100% of shares into balance    
-        elif action == 5:
-            shares_sold = self.shares_held
-            self.shares_held -= shares_sold
-            self.balance += shares_sold * current_price
+            #Convert 10% of shares into balance    
+            elif action == 3:
+                shares_sold = 0.1 * self.shares_held
+                self.shares_held -= shares_sold
+                self.balance += shares_sold * current_price
+                
+            #Convert 50% of shares into balance    
+            elif action == 4:
+                shares_sold = 0.5 * self.shares_held
+                self.shares_held -= shares_sold
+                self.balance += shares_sold * current_price
+                
+            #Convert 100% of shares into balance    
+            elif action == 5:
+                shares_sold = self.shares_held
+                self.shares_held -= shares_sold
+                self.balance += shares_sold * current_price
         
         if action == 6:
             self.holding += 1
@@ -143,6 +154,8 @@ class TradingEnv(gym.Env):
         self.net_worth_list.append(self.net_worth)
         self.price_list.append(current_price)
         
+        return reward
+        
     def render(self, mode='human', close=False):
         print("Step ", self.current_step)
         print("Balance :", self.balance)
@@ -151,7 +164,7 @@ class TradingEnv(gym.Env):
         steps = np.arange(len(self.balance_list))
         
         # Initialise the subplot function using number of rows and columns
-        figure, axis = plt.subplots(2, 2)
+        figure, axis = plt.subplots(2, 2, figsize=(20, 10))
         
         axis[0,0].plot(steps, self.net_worth_list, label="Net Worth")
         axis[0,0].set_title("Evolution of Net Worth in USD")
@@ -183,12 +196,18 @@ if __name__ == "__main__":
     env.reset()
     
     for epoch in range(1000):
-        action = np.random.randint(0,7)
+        #action = np.random.randint(0,7)
         
+        action = -1
+        
+        while action not in [i for i in range(0,7)]:
+            print("Enter action")
+            action = int(input())
+        print("Valid")
         env.step(action)
         
         if epoch % 100 == 0:
             pass
-            #env.render()
+        env.render()
             
     env.render()
