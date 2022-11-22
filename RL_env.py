@@ -20,6 +20,7 @@ class TradingEnv(gym.Env):
         self.features = cpy_data.columns
         self.lookback = lookback
         self.max_steps = max_steps
+        self.actions = []
         #Define the number of possible actions here
         
         #Actions : BUY || SELL || NOTHING
@@ -43,6 +44,7 @@ class TradingEnv(gym.Env):
         self.shares_held_list = [self.shares_held]
         self.net_worth_list = [self.net_worth]
         self.price_list = []
+        self.actions = []
         self.holding = 0
         self.balance_input = 0
         self.net_worth_input = 0
@@ -111,6 +113,7 @@ class TradingEnv(gym.Env):
         
         if (self.balance <= 5 and action in [0, 1, 2]) or (self.shares_held * current_price <= 2 and action in [3, 4, 5]):
             reward = - self.net_worth * 0.5
+            self.actions.append(6)
         else:        
             #Convert 10% of balance into asset
             if action == 0:                 
@@ -147,9 +150,12 @@ class TradingEnv(gym.Env):
                 shares_sold = self.shares_held
                 self.shares_held -= shares_sold
                 self.balance += shares_sold * current_price
+            
+            self.actions.append(action)
         
         if action == 6:
             self.holding += 1
+            self.actions.append(action)
         else:
             self.holding = 0
             
@@ -191,7 +197,17 @@ class TradingEnv(gym.Env):
         axis[0,1].plot(steps, self.shares_held_list, label="Shares Held")
         axis[0,1].set_title("Evolution of Held Shares")
         
+        price = pd.Series(self.price_list)
+        actions = pd.Series(self.actions)
+                
         axis[1,1].plot(steps, self.price_list, label="Asset Price")
+        alphas = [0.25, 0.5, 1]
+        for i in range(OUTPUT_SIZE):
+            if i in range(0,3):
+                axis[1,1].scatter(price[actions == i].index, price[actions == i], color = 'b', marker = 'o', alpha = alphas[i], label="Buy")
+            elif i in range(3,6):
+                axis[1,1].scatter(price[actions == i].index, price[actions == i], color = 'r', marker = 'o', alpha = alphas[i % 3], label="Sell")
+                
         axis[1,1].set_title("Evolution of Asset Price valued against USD")
         
         plt.show()
