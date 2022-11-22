@@ -6,6 +6,7 @@ import pandas as pd
 import torch
 
 INITIAL_BALANCE = 100
+MAX_BALANCE = 1000
 OUTPUT_SIZE = 7
 
 class TradingEnv(gym.Env):
@@ -30,7 +31,7 @@ class TradingEnv(gym.Env):
         #Each row of data contains the OHLC, Unix, perct_change since last candle and indicators needed for the agent FOR 1 TIMESTAMP
         #self.observation_space = spaces.Tuple(spaces.Box(low=[-np.inf for i in range(self.data.shape[1]-(1 + 4))], high=[np.inf for i in range(self.data.shape[1]-(1 + 4))], shape=(self.lookback, self.data.shape[1] - (1 + 4))), spaces.Box(low=[-np.inf, -np.inf], high=[np.inf, np.inf], shape=(1,2)))
         self.observation_space = spaces.Tuple([spaces.Box(low=np.array([-np.inf for i in range(self.data.shape[1]-(1 + 4))]), high=np.array([np.inf for i in range(self.data.shape[1]-(1 + 4))]), dtype=np.float64), 
-                                               spaces.Box(low=np.array([-np.inf, -np.inf]), high=np.array([np.inf, np.inf]), dtype=np.float64)])
+                                               spaces.Box(low=np.array([-np.inf, -np.inf, -np.inf]), high=np.array([np.inf, np.inf, np.inf]), dtype=np.float64)])
         
     def reset(self):
         self.balance = INITIAL_BALANCE
@@ -43,6 +44,8 @@ class TradingEnv(gym.Env):
         self.net_worth_list = [self.net_worth]
         self.price_list = []
         self.holding = 0
+        self.balance_input = 0
+        self.net_worth_input = 0
         
         
         
@@ -56,7 +59,7 @@ class TradingEnv(gym.Env):
         
         #print([self.balance, self.shares_held])
                 
-        obs = torch.cat([torch.tensor(frame.values).flatten(), torch.tensor([self.balance, self.shares_held])])
+        obs = torch.cat([torch.tensor(frame.values).flatten(), torch.tensor([self.balance_input, self.shares_held, self.net_worth_input])])
         
         
         return obs
@@ -75,10 +78,10 @@ class TradingEnv(gym.Env):
         discount = (((self.current_step_idx % self.max_steps) + 1) / self.max_steps) * (0.9999)**self.current_step_idx
         discount = 1
         
-        weighted_net_worth = 0.3 * self.balance + 0.7 * self.shares_held * current_price
+        weighted_net_worth = 0.35 * self.balance + 0.65 * self.shares_held * current_price
         
         #reward = discount * self.net_worth - self.current_step_idx * self.holding + action_bonus
-        reward = discount * weighted_net_worth - self.current_step_idx * self.holding + action_bonus
+        reward = discount * weighted_net_worth - np.sqrt(self.current_step_idx) * self.holding + action_bonus
         
         #print(discount * self.net_worth, - (self.current_step_idx) * self.holding, action_bonus)
         
@@ -150,7 +153,17 @@ class TradingEnv(gym.Env):
         else:
             self.holding = 0
             
+        if self.balance >= MAX_BALANCE:
+            self.balance = MAX_BALANCE
+                
+        if self.shares_held * current_price >= MAX_BALANCE:
+                self.shares_held = MAX_BALANCE / current_price
+                
         self.net_worth = self.balance + self.shares_held * current_price
+        
+        self.balance_input = self.balance / MAX_BALANCE
+        
+        self.net_worth_input = self.net_worth / MAX_BALANCE
         
         self.balance_list.append(self.balance)
         self.shares_held_list.append(self.shares_held)
@@ -207,7 +220,10 @@ if __name__ == "__main__":
             print("Enter action")
             action = int(input())
         print("Valid")
-        env.step(action)
+        
+        obs, _, _, _ = env.step(action)
+        
+        print(obs)
         
         if epoch % 100 == 0:
             pass

@@ -5,6 +5,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 import torch.optim as optim
+import keyboard
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using {device} device")
@@ -48,19 +49,6 @@ class ActorCritic(nn.Module):
         dist = torch.distributions.Categorical(logits=logits)
         
         return dist, value
-    
-    def policy_loss(self, old_prob, prob, advantage, eps):
-        ratio = prob / old_prob
-        
-        clip = torch.clamp(ratio, 1-eps, 1+eps)*advantage
-        
-        loss = torch.min(ratio*advantage, clip)
-        
-        return -loss
-
-    #TODO
-    def critic_loss(self):
-        pass
 
     def compute_gae(self, next_value, rewards, masks, values, gamma=0.99, tau=0.95):
         values = values + [next_value]
@@ -109,6 +97,8 @@ class ActorCritic(nn.Module):
         
         state = self.env.reset()
         
+        display = False
+        
         for epoch in range(epochs):
             print("Epoch : ", epoch)
             actions = []
@@ -119,7 +109,14 @@ class ActorCritic(nn.Module):
             log_probs = []
             masks = []
             
+            display = False
+            
             for step in range(steps_per_epoch):
+                try:
+                    if keyboard.is_pressed('d'):
+                        display = True
+                except:
+                    pass
                 print("Step : ", step, end='\r')
                 state = torch.DoubleTensor(state).reshape(-1).to(device)
                 dist, value = self.forward(state.detach())
@@ -141,7 +138,8 @@ class ActorCritic(nn.Module):
                 state = next_state
             print("", end='')
             
-            if (epoch+1) % 50 == 0:
+            
+            """ if (epoch+1) % 50 == 0:
                 #N = np.arange(steps_per_epoch)
                 '''
                 plt.plot(N, [i.cpu() for i in rewards], label="Rewards")
@@ -150,6 +148,9 @@ class ActorCritic(nn.Module):
                 plt.show()
                 '''
                 print("Rewards", rewards)
+                self.env.render() """
+            if display:
+                print("Reward\n", reward)
                 self.env.render()
                 
             next_state = torch.DoubleTensor(next_state).clone().detach().to(device)

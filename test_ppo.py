@@ -20,7 +20,7 @@ if __name__ == "__main__":
 
     env = TradingEnv(data)
 
-    input_size = env.lookback * (len(data.columns) - len(removed_cols)) + 2 #2 for balance and shares held
+    input_size = env.lookback * (len(data.columns) - len(removed_cols)) + 3 #2 for balance, shares held and net worth
     
     print("Input Size : ", input_size)
     
