@@ -21,6 +21,7 @@ class TradingEnv(gym.Env):
         self.lookback = lookback
         self.max_steps = max_steps
         self.actions = []
+        self.discount_reward = 1
         #Define the number of possible actions here
         
         #Actions : BUY || SELL || NOTHING
@@ -45,6 +46,7 @@ class TradingEnv(gym.Env):
         self.net_worth_list = [self.net_worth]
         self.price_list = []
         self.actions = []
+        self.discount_reward = 1
         self.holding = 0
         self.balance_input = 0
         self.net_worth_input = 0
@@ -82,9 +84,17 @@ class TradingEnv(gym.Env):
         
         weighted_net_worth = 0.35 * self.balance + 0.65 * self.shares_held * current_price
         
-        #reward = discount * self.net_worth - self.current_step_idx * self.holding + action_bonus
-        reward = discount * weighted_net_worth - np.sqrt(self.current_step_idx) * self.holding + action_bonus
         
+        #TODO Prendre en compte le nombre de trades gagnants dans la reward + moyenne exponentielle des rewards de tout l'épisode (?)
+        #reward = discount * self.net_worth - self.current_step_idx * self.holding + action_bonus
+        reward = discount * pow(weighted_net_worth, 1.2) - np.sqrt(self.current_step_idx) * self.holding + action_bonus
+        
+        reward *= self.discount_reward
+        
+        if reward >= 0:
+            self.discount_reward *= 0.999
+        else:
+            self.discount_reward *= 1.001
         #print(discount * self.net_worth, - (self.current_step_idx) * self.holding, action_bonus)
         
         self.current_step += 1
@@ -199,6 +209,7 @@ class TradingEnv(gym.Env):
         
         price = pd.Series(self.price_list)
         actions = pd.Series(self.actions)
+        actions = actions.reindex_like(price)
                 
         axis[1,1].plot(steps, self.price_list, label="Asset Price")
         alphas = [0.25, 0.5, 1]
