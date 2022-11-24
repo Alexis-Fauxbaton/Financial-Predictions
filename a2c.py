@@ -5,6 +5,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 import torch.optim as optim
 import keyboard
+import sys
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using {device} device")
@@ -111,11 +112,11 @@ class ActorCritic(nn.Module):
             display = False
             
             for step in range(steps_per_epoch):
-                try:
-                    if keyboard.is_pressed('d'):
-                        display = True
-                except:
-                    pass
+                if keyboard.is_pressed('d'):
+                    display = True
+                if keyboard.is_pressed('esc'):
+                        sys.exit("'Esc' key has been pressed, exiting program...")
+                        
                 print("Step : ", step, end='\r')
                 state = torch.DoubleTensor(state).reshape(-1).to(device)
                 dist, value = self.forward(state.detach())

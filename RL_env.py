@@ -41,11 +41,18 @@ class TradingEnv(gym.Env):
         self.net_worth = 0
         self.current_step = np.random.randint(0 + self.lookback,self.data.shape[0] - self.max_steps)
         self.current_step_idx = 0
-        self.balance_list = [self.balance]
-        self.shares_held_list = [self.shares_held]
-        self.net_worth_list = [self.net_worth]
+        #self.balance_list = [self.balance]
+        #self.shares_held_list = [self.shares_held]
+        #self.net_worth_list = [self.net_worth]
+        
+        self.balance_list = []
+        self.shares_held_list = []
+        self.net_worth_list = []
+        
         self.price_list = []
         self.actions = []
+        self.weighted_net_worth_list = []
+        self.reward_list = []
         self.discount_reward = 1
         self.holding = 0
         self.balance_input = 0
@@ -83,18 +90,61 @@ class TradingEnv(gym.Env):
         discount = 1
         
         weighted_net_worth = 0.35 * self.balance + 0.65 * self.shares_held * current_price
-        
+        self.weighted_net_worth_list.append(weighted_net_worth)
+
+
+        wnw_change = 0
+        if len(self.weighted_net_worth_list) == 1:
+            wnw_change = 0
+        else:
+            wnw_change = 100 * (self.weighted_net_worth_list[-1] - self.weighted_net_worth_list[-2]) / self.weighted_net_worth_list[-2]
         
         #TODO Prendre en compte le nombre de trades gagnants dans la reward + moyenne exponentielle des rewards de tout l'épisode (?)
-        #reward = discount * self.net_worth - self.current_step_idx * self.holding + action_bonus
-        reward = discount * pow(weighted_net_worth, 1.2) - np.sqrt(self.current_step_idx) * self.holding + action_bonus
+        #TODO Tenter d'utiliser le mouvement du prix futur pour influencer la reward
+        action_reward_weight = [2, 5, 10]
+        reward_horizon = 20
+    
+        curr_closing_price = self.data.loc[self.current_step, "Close"]
+        horizon_closing_price = self.data.loc[self.current_step + reward_horizon, "Close"]
+        perc_change = (horizon_closing_price - curr_closing_price) / curr_closing_price
         
-        reward *= self.discount_reward
+        bonus = 0
+        
+        if action in range(0,6):
+            bonus = action_reward_weight[action % len(action_reward_weight)]
+        else:
+            bonus = 5
+        
+        if perc_change >= 0:
+            if action in range(0,3):
+                base_reward = 5
+            elif action == 6:
+                base_reward = 0
+            else:
+                base_reward = -5
+        elif perc_change < 0:
+            if action in range(3,6):
+                base_reward = 5
+            elif action == 6:
+                base_reward = 0
+            else:
+                base_reward = -5
+        '''  
+        holding_malus = 0    
+        if action == 6:
+            holding_malus = 5
+        '''
+        #reward = discount * self.net_worth - self.current_step_idx * self.holding + action_bonus
+        #reward = discount * pow(weighted_net_worth, 1.1) - self.holding + action_bonus + self.shares_held * (current_price / INITIAL_BALANCE) * 100 To work with
+        reward = self.net_worth + base_reward * bonus + action_bonus
+        #reward *= self.discount_reward
         
         if reward >= 0:
             self.discount_reward *= 0.999
         else:
             self.discount_reward *= 1.001
+            
+        self.reward_list.append(reward)
         #print(discount * self.net_worth, - (self.current_step_idx) * self.holding, action_bonus)
         
         self.current_step += 1
@@ -116,12 +166,17 @@ class TradingEnv(gym.Env):
         
         current_price = np.random.uniform(self.data.loc[self.current_step,"Low"], self.data.loc[self.current_step, "High"])
         
-        if self.current_step_idx == 0:
-            self.price_list.append(current_price)
+        #if self.current_step_idx == 0:
+        #    self.price_list.append(current_price)
+        
+        self.balance_list.append(self.balance)
+        self.shares_held_list.append(self.shares_held)
+        self.net_worth_list.append(self.net_worth)
+        self.price_list.append(current_price)
         
         reward = 0
         
-        if (self.balance <= 5 and action in [0, 1, 2]) or (self.shares_held * current_price <= 2 and action in [3, 4, 5]):
+        if (self.balance <= 2 and action in [0, 1, 2]) or (self.shares_held * current_price <= 0.5 and action in [3, 4, 5]):
             reward = - self.net_worth * 0.5
             self.actions.append(6)
         else:        
@@ -130,30 +185,35 @@ class TradingEnv(gym.Env):
                 shares_bought = (0.1 * self.balance) / current_price
                 self.shares_held += shares_bought
                 self.balance = self.balance * 0.9
+                self.actions.append(action)
             
             #Convert 50% of balance into asset
             elif action == 1:
                 shares_bought = (0.5 * self.balance) / current_price
                 self.shares_held += shares_bought
                 self.balance = self.balance * 0.5
+                self.actions.append(action)
                 
             #Convert 100% of balance into asset            
             elif action == 2:
                 shares_bought = (1 * self.balance) / current_price
                 self.shares_held += shares_bought
                 self.balance = 0
+                self.actions.append(action)
             
             #Convert 10% of shares into balance    
             elif action == 3:
                 shares_sold = 0.1 * self.shares_held
                 self.shares_held -= shares_sold
                 self.balance += shares_sold * current_price
+                self.actions.append(action)
                 
             #Convert 50% of shares into balance    
             elif action == 4:
                 shares_sold = 0.5 * self.shares_held
                 self.shares_held -= shares_sold
                 self.balance += shares_sold * current_price
+                self.actions.append(action)
                 
             #Convert 100% of shares into balance    
             elif action == 5:
@@ -161,7 +221,7 @@ class TradingEnv(gym.Env):
                 self.shares_held -= shares_sold
                 self.balance += shares_sold * current_price
             
-            self.actions.append(action)
+                self.actions.append(action)
         
         if action == 6:
             self.holding += 1
@@ -181,10 +241,10 @@ class TradingEnv(gym.Env):
         
         self.net_worth_input = self.net_worth / MAX_BALANCE
         
-        self.balance_list.append(self.balance)
-        self.shares_held_list.append(self.shares_held)
-        self.net_worth_list.append(self.net_worth)
-        self.price_list.append(current_price)
+        #self.balance_list.append(self.balance)
+        #self.shares_held_list.append(self.shares_held)
+        #self.net_worth_list.append(self.net_worth)
+        #self.price_list.append(current_price)
         
         return reward, current_price
         
@@ -193,6 +253,7 @@ class TradingEnv(gym.Env):
         print("Balance :", self.balance)
         print("Shares :", self.shares_held)
         print("Net Worth :", self.net_worth)
+        print("Average reward :", np.mean(self.reward_list))
         steps = np.arange(len(self.balance_list))
         
         # Initialise the subplot function using number of rows and columns
@@ -220,6 +281,11 @@ class TradingEnv(gym.Env):
                 axis[1,1].scatter(price[actions == i].index, price[actions == i], color = 'r', marker = 'o', alpha = alphas[i % 3], label="Sell")
                 
         axis[1,1].set_title("Evolution of Asset Price valued against USD")
+        
+        reward_axis = axis[1,1].twinx()
+        #reward_list = self.reward_list
+        reward_axis.plot(steps, self.reward_list, label="Reward", color='g', alpha = 0.25)
+        reward_axis.set_ylabel('Rewards', color='g')
         
         plt.show()
         
