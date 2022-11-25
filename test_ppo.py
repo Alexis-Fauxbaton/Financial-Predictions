@@ -10,7 +10,7 @@ if __name__ == "__main__":
     print("Loading Data...\t", end='')
     
     data = pd.read_csv("minute_data/BTC-USD_1M_SIGNALS.csv")
-    
+    #data = pd.DataFrame({})
     print("Done")
     
     removed_cols = ["Open", "Low", "Close", "High", "Unix", "Symbol", "Date"]
@@ -19,6 +19,8 @@ if __name__ == "__main__":
     #env = DummyVecEnv([lambda:TradingEnv(data)])
 
     env = TradingEnv(data)
+
+
 
     input_size = env.lookback * (len(data.columns) - len(removed_cols)) + 3 #2 for balance, shares held and net worth
     
@@ -30,15 +32,21 @@ if __name__ == "__main__":
     
     ppo.train(env, 1000, env.max_steps)
     
+    
+    
+    
     '''
+    
     env = gym.make('FrozenLake-v1', desc=None, map_name="4x4", is_slippery=True)
 
     ppo = ActorCritic(1, 4)
     
-    ppo.train(env, 100)
-    '''
+    ppo.train(env, 50)
     
-    #ppo = PPO("MlpPolicy", env, verbose=1)
+    
+    ppo = PPO("MlpPolicy", env, verbose=1)
     
     #ppo.learn(total_timesteps=10_000)
+    ppo.learn(total_timesteps=100000)
     
+    '''

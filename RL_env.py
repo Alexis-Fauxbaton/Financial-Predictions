@@ -35,6 +35,7 @@ class TradingEnv(gym.Env):
         self.observation_space = spaces.Tuple([spaces.Box(low=np.array([-np.inf for i in range(self.data.shape[1]-(1 + 4))]), high=np.array([np.inf for i in range(self.data.shape[1]-(1 + 4))]), dtype=np.float64), 
                                                spaces.Box(low=np.array([-np.inf, -np.inf, -np.inf]), high=np.array([np.inf, np.inf, np.inf]), dtype=np.float64)])
         
+        #self.observation_space = spaces.Box(low=np.array([-np.inf for i in range(self.data.shape[1]-(1 + 4 + 3))]), high=np.array([np.inf for i in range(self.data.shape[1]-(1 + 4 + 3))]), dtype=np.float64)
     def reset(self):
         self.balance = INITIAL_BALANCE
         self.shares_held = 0

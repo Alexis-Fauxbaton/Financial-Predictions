@@ -90,15 +90,15 @@ class ActorCritic(nn.Module):
                 loss.backward()
                 self.optimizer.step()
 
-    def train(self, env, epochs=10, steps_per_epoch = 100, lr=0.001, mini_batch_size=20, ppo_epochs=30): 
+    def train(self, env, epochs=10, steps_per_epoch = 2000, lr=0.001, mini_batch_size=64, ppo_epochs=30): 
         self.optimizer = optim.Adam(self.parameters(), lr=lr)
         
         self.env = env
         
         state = self.env.reset()
-        
+                
         display = False
-        
+        goals = []
         for epoch in range(epochs):
             print("Epoch : ", epoch)
             actions = []
@@ -110,20 +110,28 @@ class ActorCritic(nn.Module):
             masks = []
             
             display = False
-            
+            done = 0
+            step = 0
             for step in range(steps_per_epoch):
+                if done == 1:
+                    self.env.reset()
+                
                 if keyboard.is_pressed('d'):
                     display = True
                 if keyboard.is_pressed('esc'):
                         sys.exit("'Esc' key has been pressed, exiting program...")
                         
                 print("Step : ", step, end='\r')
-                state = torch.DoubleTensor(state).reshape(-1).to(device)
+                #state = torch.DoubleTensor(state).reshape(-1).to(device)
+                if not isinstance(state, torch.Tensor):
+                    state = [state]
+                state = torch.DoubleTensor(state)
+                
                 dist, value = self.forward(state.detach())
                 
                 action = dist.sample()
-                
-                next_state, reward, done, _ = self.env.step(action.cpu().numpy())
+                                
+                next_state, reward, done, _ = self.env.step(int(action.cpu().numpy()))
                 
                 
                 log_prob = dist.log_prob(action)
@@ -152,8 +160,13 @@ class ActorCritic(nn.Module):
             if display:
                 print("Reward\n", reward)
                 self.env.render()
-                
-            next_state = torch.DoubleTensor(next_state).clone().detach().to(device)
+            goals.append(np.mean(rewards))
+            #print("next state before : ", next_state)
+            #next_state = torch.DoubleTensor(next_state).clone().detach().to(device)
+            if not isinstance(next_state, torch.Tensor):
+                next_state = [next_state]
+            next_state = torch.DoubleTensor(next_state)
+            #print("next_state : ", next_state)
             _, next_value = self.forward(next_state)
             
             #TODO Dig more into the implementation
@@ -161,7 +174,8 @@ class ActorCritic(nn.Module):
             
             #Detach the tensors that will not be needed for gradient descent to avoid bugs
             states = torch.cat(states)
-            states = states.reshape((steps_per_epoch, self.input_size))
+            #states = states.reshape((steps_per_epoch, self.input_size))
+            states = states.reshape((step+1, self.input_size))
             rewards = torch.cat(rewards).detach()
             '''
             print("Rewards : ", rewards)
@@ -175,6 +189,10 @@ class ActorCritic(nn.Module):
             returns = torch.cat(returns).squeeze().detach()
             advantages = returns - values
             
-            self.ppo_update(ppo_epochs, mini_batch_size, states, actions, log_probs, returns, advantages)
+            curr_mini_batch_size = mini_batch_size
+            #curr_mini_batch_size = int(step/5) + 1
+            
+            self.ppo_update(ppo_epochs, curr_mini_batch_size, states, actions, log_probs, returns, advantages)
             
             state = self.env.reset()
+        print("mean reward per eps\n", goals)
