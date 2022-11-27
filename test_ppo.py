@@ -10,7 +10,7 @@ if __name__ == "__main__":
     
     print("Loading Data...\t", end='')
     
-    #data = pd.read_csv("minute_data/BTC-USD_1M_SIGNALS.csv")
+    data = pd.read_csv("minute_data/BTC-USD_1M_SIGNALS.csv")
     #data = pd.DataFrame({})
     print("Done")
     
@@ -19,7 +19,7 @@ if __name__ == "__main__":
     
     #env = DummyVecEnv([lambda:TradingEnv(data)])
 
-    '''
+    
     env = TradingEnv(data)
 
 
@@ -36,13 +36,13 @@ if __name__ == "__main__":
     
     #ppo.train(env, 50, env.max_steps)
     
-    '''
     
     
     
     
     
-    env = gym.make('FrozenLake-v1', desc=None, map_name="4x4", is_slippery=True)
+    
+    #env = gym.make('FrozenLake-v1', desc=None, map_name="4x4", is_slippery=True)
 
     #ppo = ActorCritic(1, 4)
     
@@ -54,7 +54,8 @@ if __name__ == "__main__":
 
     ppo = PPO("MlpPolicy", env, policy_kwargs=policy_kwargs, verbose=1)
     
-    ppo.learn(total_timesteps=100000)
+    ppo.learn(total_timesteps=1000000)
+
     
     obs = env.reset()
     while True:

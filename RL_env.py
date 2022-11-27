@@ -173,7 +173,7 @@ class TradingEnv(gym.Env):
         
         obs = self._next_observation()
         
-        if self.current_step_idx == 299 and self.ep_count % 50 == 0:
+        if self.current_step_idx == 299 and self.ep_count % 1000 == 0:
             self.render()
         
         return obs, reward, done, {}
