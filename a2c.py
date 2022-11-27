@@ -17,26 +17,61 @@ class ActorCritic(nn.Module):
         self.input_size = input_size
         self.output_size = output_size
 
+        '''
         self.actor = nn.Sequential(
             nn.Linear(input_size, 2*input_size),
             nn.ReLU(),
             nn.Linear(2*input_size, 4*input_size),
+            nn.ReLU(),
+            nn.Linear(4*input_size, 8*input_size),
+            nn.ReLU(),
+            nn.Linear(8*input_size, 8*input_size),
+            nn.ReLU(),
+            nn.Linear(8*input_size, 4*input_size),
             nn.ReLU(),
             nn.Linear(4*input_size, 2*input_size),
             nn.ReLU(),
             nn.Linear(2*input_size, output_size),
         ).to(device)
         
-        self.actor = self.actor.double()
-        
         self.critic = nn.Sequential(
             nn.Linear(input_size, 2*input_size),
             nn.ReLU(),
             nn.Linear(2*input_size, 4*input_size),
             nn.ReLU(),
+            nn.Linear(4*input_size, 8*input_size),
+            nn.ReLU(),
+            nn.Linear(8*input_size, 8*input_size),
+            nn.ReLU(),
+            nn.Linear(8*input_size, 4*input_size),
+            nn.ReLU(),
             nn.Linear(4*input_size, 2*input_size),
             nn.ReLU(),
             nn.Linear(2*input_size, 1)
+        ).to(device)
+        '''
+        
+        self.actor = nn.Sequential(
+            nn.Linear(input_size, 10*input_size),
+            nn.ReLU(),
+            nn.Linear(10*input_size, 20*input_size),
+            nn.ReLU(),
+            nn.Linear(20*input_size, 10*input_size),
+            nn.ReLU(),
+            nn.Linear(10*input_size, output_size),
+            nn.Softmax()
+        ).to(device)
+        
+        self.actor = self.actor.double()
+        
+        self.critic = nn.Sequential(
+            nn.Linear(input_size, 10*input_size),
+            nn.ReLU(),
+            nn.Linear(10*input_size, 20*input_size),
+            nn.ReLU(),
+            nn.Linear(20*input_size, 10*input_size),
+            nn.ReLU(),
+            nn.Linear(10*input_size, 1),
         ).to(device)
 
         self.critic = self.critic.double()
@@ -46,7 +81,7 @@ class ActorCritic(nn.Module):
         #generate logits or probs (if the last actor layer is a softmax) from which we will generate a distribution we will sample from
         logits = self.actor(x)
         
-        dist = torch.distributions.Categorical(logits=logits)
+        dist = torch.distributions.Categorical(probs=logits)
         
         return dist, value
 
@@ -90,7 +125,7 @@ class ActorCritic(nn.Module):
                 loss.backward()
                 self.optimizer.step()
 
-    def train(self, env, epochs=10, steps_per_epoch = 2000, lr=0.001, mini_batch_size=64, ppo_epochs=30): 
+    def train(self, env, epochs=10, steps_per_epoch =300, lr=0.0005, mini_batch_size=64, ppo_epochs=30): 
         self.optimizer = optim.Adam(self.parameters(), lr=lr)
         
         self.env = env
@@ -100,7 +135,7 @@ class ActorCritic(nn.Module):
         display = False
         goals = []
         for epoch in range(epochs):
-            print("Epoch : ", epoch)
+            print("Episode : ", epoch)
             actions = []
             values = []
             rewards = []
@@ -127,7 +162,7 @@ class ActorCritic(nn.Module):
                     state = [state]
                 state = torch.DoubleTensor(state)
                 
-                dist, value = self.forward(state.detach())
+                dist, value = self.forward(state.detach().to(device))
                 
                 action = dist.sample()
                                 
@@ -146,34 +181,25 @@ class ActorCritic(nn.Module):
                 state = next_state
             print("", end='')
             
-            
-            """ if (epoch+1) % 50 == 0:
-                #N = np.arange(steps_per_epoch)
-                '''
-                plt.plot(N, [i.cpu() for i in rewards], label="Rewards")
-                plt.title("Evolution of the rewards at epoch {}".format(epoch))
-                
-                plt.show()
-                '''
-                print("Rewards", rewards)
-                self.env.render() """
+
             if display:
                 print("Reward\n", reward)
                 self.env.render()
-            goals.append(np.mean(rewards))
+                
+            goals.append(torch.mean(torch.cat(rewards)).detach().cpu().numpy())
             #print("next state before : ", next_state)
             #next_state = torch.DoubleTensor(next_state).clone().detach().to(device)
             if not isinstance(next_state, torch.Tensor):
                 next_state = [next_state]
             next_state = torch.DoubleTensor(next_state)
             #print("next_state : ", next_state)
-            _, next_value = self.forward(next_state)
+            _, next_value = self.forward(next_state.detach().to(device))
             
             #TODO Dig more into the implementation
             returns = self.compute_gae(next_value, rewards, masks, values)
             
             #Detach the tensors that will not be needed for gradient descent to avoid bugs
-            states = torch.cat(states)
+            states = torch.cat(states).to(device)
             #states = states.reshape((steps_per_epoch, self.input_size))
             states = states.reshape((step+1, self.input_size))
             rewards = torch.cat(rewards).detach()
@@ -196,3 +222,7 @@ class ActorCritic(nn.Module):
             
             state = self.env.reset()
         print("mean reward per eps\n", goals)
+        N = np.arange(epochs)
+        plt.plot(N, goals, label="Evolution of Mean Reward")
+        plt.legend()
+        plt.show()

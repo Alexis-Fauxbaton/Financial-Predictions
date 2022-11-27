@@ -12,7 +12,7 @@ OUTPUT_SIZE = 7
 class TradingEnv(gym.Env):
     metadata = {'render.modes': ['human']}
     
-    def __init__(self, data, lookback=30, max_steps=300):
+    def __init__(self, data, lookback=30, max_steps=300, same_window=True):
         super(TradingEnv).__init__()
         
         self.data = data
@@ -22,6 +22,9 @@ class TradingEnv(gym.Env):
         self.max_steps = max_steps
         self.actions = []
         self.discount_reward = 1
+        self.window_start = np.random.randint(0 + self.lookback,self.data.shape[0] - self.max_steps)
+        self.same_window = same_window
+        self.ep_count = 0
         #Define the number of possible actions here
         
         #Actions : BUY || SELL || NOTHING
@@ -32,15 +35,19 @@ class TradingEnv(gym.Env):
         #We assume that the only columns that are not fed to the agent are unix date + last 4 OHLC (1 + 4)
         #Each row of data contains the OHLC, Unix, perct_change since last candle and indicators needed for the agent FOR 1 TIMESTAMP
         #self.observation_space = spaces.Tuple(spaces.Box(low=[-np.inf for i in range(self.data.shape[1]-(1 + 4))], high=[np.inf for i in range(self.data.shape[1]-(1 + 4))], shape=(self.lookback, self.data.shape[1] - (1 + 4))), spaces.Box(low=[-np.inf, -np.inf], high=[np.inf, np.inf], shape=(1,2)))
-        self.observation_space = spaces.Tuple([spaces.Box(low=np.array([-np.inf for i in range(self.data.shape[1]-(1 + 4))]), high=np.array([np.inf for i in range(self.data.shape[1]-(1 + 4))]), dtype=np.float64), 
-                                               spaces.Box(low=np.array([-np.inf, -np.inf, -np.inf]), high=np.array([np.inf, np.inf, np.inf]), dtype=np.float64)])
+        #self.observation_space = spaces.Tuple([spaces.Box(low=np.array([-np.inf for i in range(self.data.shape[1]-(1 + 4))]), high=np.array([np.inf for i in range(self.data.shape[1]-(1 + 4))]), dtype=np.float64), 
+        #                                       spaces.Box(low=np.array([-np.inf, -np.inf, -np.inf]), high=np.array([np.inf, np.inf, np.inf]), dtype=np.float64)])
         
-        #self.observation_space = spaces.Box(low=np.array([-np.inf for i in range(self.data.shape[1]-(1 + 4 + 3))]), high=np.array([np.inf for i in range(self.data.shape[1]-(1 + 4 + 3))]), dtype=np.float64)
+        print("Box size : ", (len(self.features)) * self.lookback + 3)
+        self.observation_space = spaces.Box(low=np.array([-np.inf for i in range((len(self.features)) * self.lookback + 3)]), high=np.array([np.inf for i in range((len(self.features)) * self.lookback + 3)]), dtype=np.float64)
     def reset(self):
         self.balance = INITIAL_BALANCE
         self.shares_held = 0
         self.net_worth = 0
-        self.current_step = np.random.randint(0 + self.lookback,self.data.shape[0] - self.max_steps)
+        if not self.same_window:
+            self.current_step = np.random.randint(0 + self.lookback,self.data.shape[0] - self.max_steps)
+        else:
+            self.current_step = self.window_start
         self.current_step_idx = 0
         #self.balance_list = [self.balance]
         #self.shares_held_list = [self.shares_held]
@@ -58,6 +65,8 @@ class TradingEnv(gym.Env):
         self.holding = 0
         self.balance_input = 0
         self.net_worth_input = 0
+        self.ep_count += 1
+        print("Episode : ", self.ep_count)
         
         
         
@@ -116,6 +125,7 @@ class TradingEnv(gym.Env):
         else:
             bonus = 5
         
+        holding_bonus = 0
         if perc_change >= 0:
             if action in range(0,3):
                 base_reward = 5
@@ -123,6 +133,7 @@ class TradingEnv(gym.Env):
                 base_reward = 0
             else:
                 base_reward = -5
+            holding_bonus = 5
         elif perc_change < 0:
             if action in range(3,6):
                 base_reward = 5
@@ -130,6 +141,7 @@ class TradingEnv(gym.Env):
                 base_reward = 0
             else:
                 base_reward = -5
+            holding_bonus = -5
         '''  
         holding_malus = 0    
         if action == 6:
@@ -137,7 +149,7 @@ class TradingEnv(gym.Env):
         '''
         #reward = discount * self.net_worth - self.current_step_idx * self.holding + action_bonus
         #reward = discount * pow(weighted_net_worth, 1.1) - self.holding + action_bonus + self.shares_held * (current_price / INITIAL_BALANCE) * 100 To work with
-        reward = self.net_worth + base_reward * bonus + action_bonus
+        reward =  0.15 * weighted_net_worth +  0.4 * base_reward * bonus + 0.25 * action_bonus + 0.2 * holding_bonus * (self.shares_held * 100 - self.balance_input)
         #reward *= self.discount_reward
         
         if reward >= 0:
@@ -160,6 +172,9 @@ class TradingEnv(gym.Env):
             print("Net Worth :", self.net_worth)
         
         obs = self._next_observation()
+        
+        if self.current_step_idx == 299 and self.ep_count % 50 == 0:
+            self.render()
         
         return obs, reward, done, {}
     
