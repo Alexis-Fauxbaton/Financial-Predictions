@@ -253,9 +253,9 @@ def get_data_between(data, start, end):
     
     end_unix = datetime.strptime(end, "%d/%m/%Y").timestamp()
     
-    print("Start : {} || End : {}".format(start_unix, end_unix))
+    #print("Start : {} || End : {}".format(start_unix, end_unix))
     
-    print(len(data))
+    #print(len(data))
     
     return data.loc[(data["Unix"] >= start_unix) & (data["Unix"] < end_unix)]
 

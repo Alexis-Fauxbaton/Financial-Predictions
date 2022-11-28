@@ -12,7 +12,7 @@ OUTPUT_SIZE = 7
 class TradingEnv(gym.Env):
     metadata = {'render.modes': ['human']}
     
-    def __init__(self, data, lookback=30, max_steps=300, same_window=True):
+    def __init__(self, data, lookback=60, max_steps=300, same_window=False):
         super(TradingEnv).__init__()
         
         self.data = data
@@ -61,6 +61,7 @@ class TradingEnv(gym.Env):
         self.actions = []
         self.weighted_net_worth_list = []
         self.reward_list = []
+        self.sharpe_ratio_list = []
         self.discount_reward = 1
         self.holding = 0
         self.balance_input = 0
@@ -112,7 +113,7 @@ class TradingEnv(gym.Env):
         #TODO Prendre en compte le nombre de trades gagnants dans la reward + moyenne exponentielle des rewards de tout l'épisode (?)
         #TODO Tenter d'utiliser le mouvement du prix futur pour influencer la reward
         action_reward_weight = [2, 5, 10]
-        reward_horizon = 20
+        reward_horizon = 40
     
         curr_closing_price = self.data.loc[self.current_step, "Close"]
         horizon_closing_price = self.data.loc[self.current_step + reward_horizon, "Close"]
@@ -147,9 +148,20 @@ class TradingEnv(gym.Env):
         if action == 6:
             holding_malus = 5
         '''
-        #reward = discount * self.net_worth - self.current_step_idx * self.holding + action_bonus
+        
+        #Calculate Ep sharpe ratio
+        sharpe_window = 20
+        strategy = pd.Series(self.net_worth_list[-sharpe_window:-1])
+        sharpe_ratio = (strategy.diff().mean() / strategy.std()) * np.sqrt(sharpe_window)
+        if self.current_step_idx < sharpe_window:
+            sharpe_ratio = 0
+        if (not isinstance(sharpe_ratio, float)) or sharpe_ratio == np.nan or strategy.std() == 0:
+            sharpe_ratio = 0
+        #print(sharpe_ratio)
+        self.sharpe_ratio_list.append(sharpe_ratio)
+        #sharpe_ratio = (Average(52 week series of weekly returns)/StDev(52 week series of weekly returns))*52^.5
         #reward = discount * pow(weighted_net_worth, 1.1) - self.holding + action_bonus + self.shares_held * (current_price / INITIAL_BALANCE) * 100 To work with
-        reward =  0.15 * weighted_net_worth +  0.4 * base_reward * bonus + 0.25 * action_bonus + 0.2 * holding_bonus * (self.shares_held * 100 - self.balance_input)
+        reward = 100 * sharpe_ratio +  0.15 * weighted_net_worth +  0.4 * base_reward * bonus + 0.25 * action_bonus + 0.2 * holding_bonus * (self.shares_held * 100 - self.balance_input)
         #reward *= self.discount_reward
         
         if reward >= 0:
@@ -173,7 +185,7 @@ class TradingEnv(gym.Env):
         
         obs = self._next_observation()
         
-        if self.current_step_idx == 299 and self.ep_count % 1000 == 0:
+        if self.current_step_idx == 299 and self.ep_count % 2000 == 0:
             self.render()
         
         return obs, reward, done, {}
@@ -270,7 +282,12 @@ class TradingEnv(gym.Env):
         print("Shares :", self.shares_held)
         print("Net Worth :", self.net_worth)
         print("Average reward :", np.mean(self.reward_list))
+        print("Baseline Strategy Net Worth:", INITIAL_BALANCE * self.price_list[-1] / self.price_list[0])
+        alphas = [0.25, 0.5, 1]
         steps = np.arange(len(self.balance_list))
+        price = pd.Series(self.price_list)
+        actions = pd.Series(self.actions)
+        actions = actions.reindex_like(price)
         
         # Initialise the subplot function using number of rows and columns
         figure, axis = plt.subplots(2, 2, figsize=(20, 10))
@@ -281,15 +298,20 @@ class TradingEnv(gym.Env):
         axis[1,0].plot(steps, self.balance_list, label="Balance")
         axis[1,0].set_title("Evolution of Balance in USD")
         
-        axis[0,1].plot(steps, self.shares_held_list, label="Shares Held")
-        axis[0,1].set_title("Evolution of Held Shares")
-        
-        price = pd.Series(self.price_list)
-        actions = pd.Series(self.actions)
-        actions = actions.reindex_like(price)
+        axis[0,1].plot(steps, self.price_list, label="Strategy Sharpe Ratio")
+        for i in range(OUTPUT_SIZE):
+            if i in range(0,3):
+                axis[0,1].scatter(price[actions == i].index, price[actions == i], color = 'b', marker = 'o', alpha = alphas[i], label="Buy")
+            elif i in range(3,6):
+                axis[0,1].scatter(price[actions == i].index, price[actions == i], color = 'r', marker = 'o', alpha = alphas[i % 3], label="Sell")
+        axis[0,1].set_title("Evolution of Asset Price valued against USD + Sharpe Ratio of strategy")
+        sr_axis = axis[0,1].twinx()
+        #reward_list = self.reward_list
+        sr_axis.plot(steps, self.sharpe_ratio_list, label="Sharpe Ratio", color='m', alpha = 0.25)
+        sr_axis.set_ylabel('Sharpe Ratio', color='m')
+       
                 
         axis[1,1].plot(steps, self.price_list, label="Asset Price")
-        alphas = [0.25, 0.5, 1]
         for i in range(OUTPUT_SIZE):
             if i in range(0,3):
                 axis[1,1].scatter(price[actions == i].index, price[actions == i], color = 'b', marker = 'o', alpha = alphas[i], label="Buy")

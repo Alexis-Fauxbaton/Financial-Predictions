@@ -3,6 +3,7 @@ from RL_env import *
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3 import PPO
 from time import sleep
+from data_processing import *
 
 
 if __name__ == "__main__":
@@ -11,6 +12,7 @@ if __name__ == "__main__":
     print("Loading Data...\t", end='')
     
     data = pd.read_csv("minute_data/BTC-USD_1M_SIGNALS.csv")
+    data = get_data_between(data, "1/1/2021", "1/1/2023").reset_index()
     #data = pd.DataFrame({})
     print("Done")
     
@@ -49,12 +51,13 @@ if __name__ == "__main__":
     #ppo.train(env, 100)
 
     # Custom MLP policy of three layers of size 128 each
-    policy_kwargs = dict(activation_fn=torch.nn.ReLU,
-                     net_arch=[320, 3200, 3200, dict(pi=[3200, 320, 32], vf=[3200, 320, 32])])
+    #policy_kwargs = dict(activation_fn=torch.nn.ReLU,
+    #                 net_arch=[320, 3200, 3200, dict(pi=[3200, 320, 32], vf=[3200, 320, 32])])
 
-    ppo = PPO("MlpPolicy", env, policy_kwargs=policy_kwargs, verbose=1)
+#    ppo = PPO("MlpPolicy", env, policy_kwargs=policy_kwargs, verbose=1)
+    ppo = PPO("MlpPolicy", env, verbose=1)
     
-    ppo.learn(total_timesteps=1000000)
+    ppo.learn(total_timesteps=10000000)
 
     
     obs = env.reset()
