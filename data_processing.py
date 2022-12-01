@@ -331,6 +331,7 @@ def custom_splitter(data1, data2):
 ############################################################ BACKTEST FUNCTIONS ######################################################################
 
 def simple_strategy_backtest(test_set):
+    #TODO Adapt strategy to when target range != granularity of data
     init_assets = 100
     assets = init_assets
     test_set = test_set.copy()
@@ -356,8 +357,10 @@ def simple_strategy_backtest(test_set):
     print("Value of assets at the beginning of simple strategy : {}".format(init_assets))
     print("Value of assets at the end of simple strategy : {}".format(assets))
     N = np.arange(0,len(backtest_set_assets))
-    plt.figure(figsize=[20,10])
-    plt.plot(N,backtest_set_assets,label="Évolution du portefeuille")
+    _, axis = plt.subplots(1, 1, figsize=[20,10])
+    axis.plot(N,backtest_set_assets,label="Évolution du portefeuille")
+    #net_worth = axis.twinx()
+    #net_worth.plot(N, )
     plt.show()
 
 ############################################################ DATA HANDLER CLASS ######################################################################
@@ -446,6 +449,7 @@ class DataHandler:
         read = True
         self.predict_data = None
         self.add_gaussian_mixture()
+        #print("Labeling mode : ", standard)
         if standard:
             read = False
             self.predict_data = standard_labeling(
@@ -502,15 +506,17 @@ class DataHandler:
                 pass
 
         if not read:
+            #skip = int(max_days/3)
+            skip = int(max_days/10)
             self.predict_data = self.predict_data[[
-                i % int(max_days/3) == 0 for i in range(len(self.predict_data))]]
+                i % skip == 0 for i in range(len(self.predict_data))]]
 
         if (not standard) and (read == False):
             print("Writing Processed Data to memory...")
             self.predict_data.to_csv(
                 "processed_data/processed_1m_{}_{}.csv".format(max_days, target_range), index=False)
         
-    def fit_predict(self, train_start="1/1/2019", train_end="1/1/2021", test_start="1/1/2021", test_end="1/1/2023", max_days=30, target_range=10, labeling=True, equal_sampling=False, sampling_method="classic", epochs=10):
+    def fit_predict(self, train_start="1/1/2017", train_end="1/1/2021", test_start="1/1/2021", test_end="1/1/2023", max_days=30, target_range=10, labeling=True, equal_sampling=False, sampling_method="classic", epochs=10):
         if self.predict_data == None:
             self.create_predict_data(max_days, target_range, labeling)
         
@@ -545,11 +551,9 @@ class DataHandler:
         
             model = tf.keras.Sequential([
                 tf.keras.layers.Flatten(input_shape=shape),
-                tf.keras.layers.Dense(200, activation='relu'),
-                tf.keras.layers.Dense(2000, activation='relu'),
-                tf.keras.layers.Dense(5000, activation='relu'),
-                tf.keras.layers.Dense(2000, activation='relu'),
-                tf.keras.layers.Dense(200, activation='relu'),
+                tf.keras.layers.Dense(2*shape[0], activation='relu'),
+                tf.keras.layers.Dense(4*shape[0], activation='relu'),
+                tf.keras.layers.Dense(2*shape[0], activation='relu'),
                 tf.keras.layers.Dense(1, activation='sigmoid')
             ])
 
@@ -557,7 +561,7 @@ class DataHandler:
                         loss=tf.keras.losses.BinaryCrossentropy(),
                         metrics=['accuracy', 'Precision', 'Recall', 'AUC'])
             
-            epochs = 10
+            epochs = 6
         
         else:
             
@@ -565,11 +569,9 @@ class DataHandler:
             
             model = tf.keras.Sequential([
                 tf.keras.layers.Flatten(input_shape=shape),
-                tf.keras.layers.Dense(200, activation='relu'),
-                tf.keras.layers.Dense(2000, activation='relu'),
-                tf.keras.layers.Dense(5000, activation='relu'),
-                tf.keras.layers.Dense(2000, activation='relu'),
-                tf.keras.layers.Dense(200, activation='relu'),
+                tf.keras.layers.Dense(2*shape[0], activation='relu'),
+                tf.keras.layers.Dense(4*shape[0], activation='relu'),
+                tf.keras.layers.Dense(2*shape[0], activation='relu'),
                 tf.keras.layers.Dense(outputs, activation='softmax')
             ])
 
@@ -599,6 +601,8 @@ class DataHandler:
         print(tf.math.confusion_matrix(test_labels, preds))
         
         test_set = test_data.copy()
+        
+        print("Test Set : \n", test_set.head())
 
         test_set["Prediction"] = preds
         test_set["Target"] = test_labels

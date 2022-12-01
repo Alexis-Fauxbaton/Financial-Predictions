@@ -17,7 +17,7 @@ target_range = 10
 def main():
     handler = data_processing.DataHandler("minute_data/BTC-USD_1M_SIGNALS.csv")
     
-    handler.fit_predict(labeling = False, equal_sampling=True, sampling_method="none")
+    handler.fit_predict(labeling = True, equal_sampling=True, sampling_method="none")
     pass
 
 if __name__ == "__main__":
