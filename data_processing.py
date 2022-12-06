@@ -12,6 +12,7 @@ from sklearn.preprocessing import StandardScaler
 import imblearn
 import tensorflow as tf
 from sklearn.mixture import GaussianMixture
+from imblearn.under_sampling import RandomUnderSampler
 
 #from predict import create_predict_data
 
@@ -197,6 +198,11 @@ def sample_equal_target(data, method="classic"):
         sm = imblearn.over_sampling.SMOTE(random_state=42)
         sample, sample_labels = sm.fit_resample(data, data["Target"])
         sample.drop("Target", inplace=True, axis=1)
+        
+    elif method == "undersample":
+        undersampler = RandomUnderSampler(random_state=42)
+        sample, sample_labels = undersampler.fit_resample(data.drop("Target", axis=1), data["Target"])
+        
     
     return sample,sample_labels
 
