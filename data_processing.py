@@ -13,6 +13,7 @@ import imblearn
 import tensorflow as tf
 from sklearn.mixture import GaussianMixture
 from imblearn.under_sampling import RandomUnderSampler
+from imblearn.over_sampling import RandomOverSampler
 
 #from predict import create_predict_data
 
@@ -26,7 +27,7 @@ def add_adx(data, interval=14):
     adx_cols = ta.adx(data["High"], data["Low"],
                       data["Close"], length=interval)
 
-    adx_cols = adx_cols.rename({"DMP_14": "+DM", "DMN_14": "-DM"})
+    adx_cols = adx_cols.rename({"DMP_14": "+DM", "DMN_14": "-DM", "ADX_14": "ADX14"}, axis=1)
 
     data = data.join(adx_cols)
 
@@ -36,7 +37,7 @@ def add_adx(data, interval=14):
 def add_rsi(data, interval=14):
     rsi = ta.rsi(data["Close"], length=interval)
 
-    rsi = rsi.rename("RSI")
+    rsi = rsi.rename("RSI", axis=1)
 
     data = data.join(rsi)
 
@@ -48,7 +49,7 @@ def add_macd(data, interval=14):
 
     macd = macd.drop("MACDs_12_26_9", axis=1)
 
-    macd = macd.rename({"MACD_12_26_9": "MACD", "MACDh_12_26_9": "MACD_H"})
+    macd = macd.rename({"MACD_12_26_9": "MACD", "MACDh_12_26_9": "MACD_H"}, axis=1)
 
     data = data.join(macd)
 
@@ -56,17 +57,20 @@ def add_macd(data, interval=14):
 
 
 def add_log_return(data, interval=1):
+    data.dropna(inplace=True, axis=0)
     log_r = ta.log_return(data["Close"], length=interval)
 
-    log_r = log_r.rename("LOG_RETURN")
+    log_r = log_r.rename("LOG_RETURN", axis=1)
 
     data = data.join(log_r)
 
+    return data
 
 def add_percent_return(data, interval=1):
     percent_r = ta.percent_return(data["Close"], length=interval)
 
-    percent_r = percent_r.rename("PERCENT_RETURN")
+    #percent_r = percent_r.rename("PERCENT_RETURN", axis=1)
+    percent_r = percent_r.rename("Variation", axis=1)
 
     data = data.join(percent_r)
 
@@ -203,6 +207,10 @@ def sample_equal_target(data, method="classic"):
         undersampler = RandomUnderSampler(random_state=42)
         sample, sample_labels = undersampler.fit_resample(data.drop("Target", axis=1), data["Target"])
         
+    elif method == "oversample":
+        oversampler = RandomOverSampler(random_state=42)
+        sample, sample_labels = oversampler.fit_resample(data.drop("Target", axis=1), data["Target"])
+        
     
     return sample,sample_labels
 
@@ -211,18 +219,12 @@ def custom_splitter(data1, data2):
     train_labels = data1["Target"]
     test_data = data2.drop(["Date", "Unix", "Target"], axis=1)
     test_labels = data2["Target"]
-    variation_check = False
 
     try:
         train_data.drop("Target_Variation", axis=1, inplace=True)
         test_data.drop("Target_Variation", axis=1, inplace=True)
-        variation_check = True
-    except:
-        pass
-
-    if variation_check:
         return train_data, train_labels, test_data, test_labels, data2["Target_Variation"] 
-    else:
+    except:
         return train_data, train_labels, test_data, test_labels, None    
     
     
@@ -246,7 +248,15 @@ def merge_1m():
 
 def process_minute_data(write=True):
 
-    data = pd.read_csv("minute_data/BTC-USD_1m.csv")
+    try:
+        data = pd.read_csv("minute_data/BTC-USD_1m.csv")
+    except:
+        print("Error retrieving 1m data")
+        print("Creating 1m data...",end='\n')
+        merge_1m()
+        print("Done")
+        data = pd.read_csv("minute_data/BTC-USD_1m.csv")
+        
     data.sort_values(by="Unix", ascending=True,
                      inplace=True, ignore_index=True)
     data = add_percent_return(data)
@@ -256,7 +266,7 @@ def process_minute_data(write=True):
     data = add_adx(data)
     #data.drop("Adj Close",axis=1,inplace=True)
     columns_to_standardize = ["Volume USD", "MACD", "MACD_H",
-                              "RSI", "PERCENT_RETURN", "LOG_RETURN", "ADX14", "-DM", "+DM"]
+                              "RSI", "Variation", "LOG_RETURN", "ADX14", "-DM", "+DM"]
     means, std = data[columns_to_standardize].mean(
     ), data[columns_to_standardize].std()
 
@@ -280,7 +290,6 @@ def process_minute_data(write=True):
         data = standardize_col(data, "Volume USD")
         data = standardize_col(data, "MACD")
         data = standardize_col(data, "MACD_H")
-        print(data)
         data = standardize_col(data, "RSI")
         data = standardize_col(data, "Variation")
         data = standardize_col(data, ["ADX14", "-DM", "+DM"])

@@ -25,13 +25,15 @@ class DataHandler:
 
     def load(self, csv_path):
         del self.data
+        del self.predict_data
+        del self.data_scaler
 
         print("Successfully deleted old data")
 
         try:
             self.data = pd.read_csv(csv_path)
         except:
-            print("Failed to import data at path {}".format(csv_path))
+            print("Failed to import data located at path {}".format(csv_path))
 
     def get_data(self):
         return self.data

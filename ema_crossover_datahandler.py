@@ -68,7 +68,7 @@ def simple_strategy_backtest(test_set, model, algorithm, outputs):
     try:
         model.evaluate(temp_data, temp_target)
     except:
-        model.score(temp_data, temp_target)
+        print("{} score : ".format(algorithm), model.score(temp_data, temp_target))
 
     if algorithm == "MLP":
 
@@ -110,7 +110,7 @@ class EMACrossoverDataHandler(DataHandler):
         super().__init__(csv_path)
 
     def create_predict_data(self, max_days=15, target_range=3, standard=True, preserve_index=False):
-        print("Creating Predict DataFrame")
+        print("Creating Predict DataFrame...", end='\t')
         if self.max_days == None:
             self.max_days = max_days
         if self.target_range == None:
@@ -136,14 +136,15 @@ class EMACrossoverDataHandler(DataHandler):
         self.predict_data.dropna(axis=0, inplace=True)
         '''
         ############################################################################################################
+        print("Done")
 
     def fit_predict(self, train_start="1/1/2017", train_end="1/1/2021", test_start="1/1/2021", test_end="1/1/2023", max_days=15, target_range=3, labeling=True, equal_sampling=False, sampling_method="undersample", epochs=10, algorithm="MLP"):
         if self.predict_data == None:
             self.create_predict_data(max_days, target_range, labeling, True)
 
-        test_index = self.predict_data["index"]
+        #test_index = self.predict_data["index"]
         
-        self.predict_data.drop("index", axis=1, inplace=True)
+        #self.predict_data.drop("index", axis=1, inplace=True)
 
         print("Predict Data : \n{}".format(self.predict_data))
 
@@ -170,6 +171,14 @@ class EMACrossoverDataHandler(DataHandler):
         train_data, train_labels, test_data, test_labels, test_variation = yearly_custom_splitter(
             train_data, test_data)
 
+        train_data.drop("index", axis=1, inplace=True)
+
+        test_index = test_data["index"]
+        print("Test Index\n", test_index)
+
+        test_data.drop("index", axis=1, inplace=True)
+        
+        
         if sampling_method != 'none':
             if equal_sampling:
                 train_data["Target"] = train_labels
@@ -263,6 +272,8 @@ class EMACrossoverDataHandler(DataHandler):
 
         test_set = test_data.copy()
 
+        print("Predict Data After : \n", self.predict_data)
+
         print("Test Set : \n", test_set)
 
         test_set["Prediction"] = preds
@@ -273,6 +284,8 @@ class EMACrossoverDataHandler(DataHandler):
         test_set["Close"] = self.data["Close"].loc[test_index]
         test_set["EMA_10_Display"] = ta.ema(test_set["Close"], 10)
         test_set["EMA_50_Display"] = ta.ema(test_set["Close"], 50)
+        
+        #print(pd.merge(test_set["EMA_10_Display"], self.predict_data["EMA_10"] * EMA_NORMALIZE_FACTOR))
 
         # Backtest of simplest strategy
         simple_strategy_backtest(test_set, model, algorithm, outputs)
@@ -287,7 +300,6 @@ def main():
 
     handler.fit_predict(labeling=True, equal_sampling=True,
                         sampling_method="undersample", algorithm="MLP")
-    pass
 
 
 if __name__ == "__main__":
