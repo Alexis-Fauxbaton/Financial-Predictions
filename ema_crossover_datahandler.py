@@ -5,13 +5,14 @@ from sklearn.ensemble import RandomForestClassifier
 import sys
 
 EMA_NORMALIZE_FACTOR = 70000  # TODO Find better option
-
+FIRST_EMA = 10
+SECOND_EMA = 50
 
 def standard_labeling(data, max_days, target_range, skip_factor=3, preserve_index=False):
 
     predict_data = data.copy()
-    predict_data["EMA_10"] = ta.ema(predict_data["Close"], 10)
-    predict_data["EMA_50"] = ta.ema(predict_data["Close"], 50)
+    predict_data["EMA_{}".format(FIRST_EMA)] = ta.ema(predict_data["Close"], FIRST_EMA)
+    predict_data["EMA_{}".format(SECOND_EMA)] = ta.ema(predict_data["Close"], SECOND_EMA)
     #predict_data["EMA_200"] = ta.ema(predict_data["Close"], 200)
 
     for i in range(1, max_days):
@@ -20,10 +21,10 @@ def standard_labeling(data, max_days, target_range, skip_factor=3, preserve_inde
     predict_data["Target"] = (
         predict_data["Close"].shift(-target_range) - data["Close"] >= 0)
 
-    sign = (predict_data["EMA_50"] - predict_data["EMA_10"]) <= 0
+    sign = (predict_data["EMA_{}".format(SECOND_EMA)] - predict_data["EMA_{}".format(FIRST_EMA)]) <= 0
 
-    predict_data["Target"] = ((predict_data["EMA_50"].shift(-target_range) -
-                              predict_data["EMA_10"].shift(-target_range)) <= 0) != sign
+    predict_data["Target"] = ((predict_data["EMA_{}".format(SECOND_EMA)].shift(-target_range) -
+                              predict_data["EMA_{}".format(FIRST_EMA)].shift(-target_range)) <= 0) != sign
 
     predict_data["Target"] = np.where(
         (predict_data["Target"] == False), 0, predict_data["Target"])
@@ -43,16 +44,16 @@ def standard_labeling(data, max_days, target_range, skip_factor=3, preserve_inde
     predict_data = predict_data[[
         i % skip == 0 for i in range(len(predict_data))]]
 
-    display_data = predict_data[["Unix", "Close", "EMA_10",
-                                 "EMA_50", "Target"]][-1000:].copy().reset_index(drop=True)
+    display_data = predict_data[["Unix", "Close", "EMA_{}".format(FIRST_EMA),
+                                 "EMA_{}".format(SECOND_EMA), "Target"]][-1000:].copy().reset_index(drop=True)
     
     predict_close = predict_data["Close"]
     
     predict_data.drop(
         ["Open", "Close", "High", "Low", "Symbol"], axis=1, inplace=True)
 
-    predict_data["EMA_10"] = predict_data["EMA_10"] / EMA_NORMALIZE_FACTOR
-    predict_data["EMA_50"] = predict_data["EMA_50"] / EMA_NORMALIZE_FACTOR
+    predict_data["EMA_{}".format(FIRST_EMA)] = predict_data["EMA_{}".format(FIRST_EMA)] / EMA_NORMALIZE_FACTOR
+    predict_data["EMA_{}".format(SECOND_EMA)] = predict_data["EMA_{}".format(SECOND_EMA)] / EMA_NORMALIZE_FACTOR
 
     print("Display Data : \n", display_data.tail(10))
 
@@ -63,7 +64,7 @@ def standard_labeling(data, max_days, target_range, skip_factor=3, preserve_inde
 
 def simple_strategy_backtest(data, model, critic, algorithm, outputs, max_days, target_range):
     test_set, _, test_close = standard_labeling(
-                data[-1000:], max_days, target_range, 3, False)
+                data[-3000:], max_days, target_range, 3, False)
     #test_set = test_set[2064370:2064370+500]
     temp_data = test_set.copy().drop(
         ["Date", "Target", "Unix"], axis=1)
@@ -103,18 +104,18 @@ def simple_strategy_backtest(data, model, critic, algorithm, outputs, max_days, 
     fig, axis = plt.subplots(1, 1, figsize=[10, 5])
 
     test_set = test_set.join(test_close)
-    test_set["EMA_10_Display"] = ta.ema(test_set["Close"], 10)
-    test_set["EMA_50_Display"] = ta.ema(test_set["Close"], 50)
+    test_set["EMA_{}_Display".format(FIRST_EMA)] = ta.ema(test_set["Close"], FIRST_EMA)
+    test_set["EMA_{}_Display".format(SECOND_EMA)] = ta.ema(test_set["Close"], SECOND_EMA)
     test_set["Prediction"] = preds
     
     test_set.reset_index(inplace=True, drop=True)
     #critic_probs = pd.Series(critic_probs)
     
     axis.plot(test_set["Close"].index, test_set["Close"], label="Close")
-    axis.plot(test_set["EMA_10_Display"].index,
-              test_set["EMA_10_Display"], label="EMA_10")
-    axis.plot(test_set["EMA_50_Display"].index,
-              test_set["EMA_50_Display"], label="EMA_50")
+    axis.plot(test_set["EMA_{}_Display".format(FIRST_EMA)].index,
+              test_set["EMA_{}_Display".format(FIRST_EMA)], label="EMA_{}".format(FIRST_EMA))
+    axis.plot(test_set["EMA_{}_Display".format(SECOND_EMA)].index,
+              test_set["EMA_{}_Display".format(SECOND_EMA)], label="EMA_{}".format(SECOND_EMA))
     #TODO NOT PLOTTING THE RIGHT THING
     """ axis.scatter(test_set[(test_set["Target"] == 0)].index, test_set[(
         test_set["Target"] == 0)]["Close"], alpha=0.5, color='r', marker='o', label="Sell")
@@ -124,10 +125,10 @@ def simple_strategy_backtest(data, model, critic, algorithm, outputs, max_days, 
         test_set["Prediction"] == 0) & (test_set["Prediction"] == test_set["Target"])]["Close"], alpha=critic_probs[(test_set["Prediction"] == 0) & (test_set["Prediction"] == test_set["Target"])], color='r', marker='o', label="Sell")
     axis.scatter(test_set[(test_set["Prediction"] == 2) & (test_set["Prediction"] == test_set["Target"])].index, test_set[(
         test_set["Prediction"] == 2) & (test_set["Prediction"] == test_set["Target"])]["Close"], alpha=critic_probs[(test_set["Prediction"] == 2) & (test_set["Prediction"] == test_set["Target"])], color='b', marker='o', label="Buy")
-    axis.scatter(test_set[(test_set["Prediction"] == 0) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_10_Display"] > test_set["EMA_50_Display"])].index, test_set[(
-        test_set["Prediction"] == 0) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_10_Display"] > test_set["EMA_50_Display"])]["Close"], alpha=critic_probs[(test_set["Prediction"] == 0) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_10_Display"] > test_set["EMA_50_Display"])], color='k', marker='o', label="Fake Sell")
-    axis.scatter(test_set[(test_set["Prediction"] == 2) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_10_Display"] < test_set["EMA_50_Display"])].index, test_set[(
-        test_set["Prediction"] == 2) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_10_Display"] < test_set["EMA_50_Display"])]["Close"], alpha=critic_probs[(test_set["Prediction"] == 2) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_10_Display"] < test_set["EMA_50_Display"])], color='m', marker='o', label="Fake Buy")
+    axis.scatter(test_set[(test_set["Prediction"] == 0) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_{}_Display".format(FIRST_EMA)] > test_set["EMA_{}_Display".format(SECOND_EMA)])].index, test_set[(
+        test_set["Prediction"] == 0) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_{}_Display".format(FIRST_EMA)] > test_set["EMA_{}_Display".format(SECOND_EMA)])]["Close"], alpha=critic_probs[(test_set["Prediction"] == 0) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_{}_Display".format(FIRST_EMA)] > test_set["EMA_{}_Display".format(SECOND_EMA)])], color='k', marker='o', label="Fake Sell")
+    axis.scatter(test_set[(test_set["Prediction"] == 2) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_{}_Display".format(FIRST_EMA)] < test_set["EMA_{}_Display".format(SECOND_EMA)])].index, test_set[(
+        test_set["Prediction"] == 2) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_{}_Display".format(FIRST_EMA)] < test_set["EMA_{}_Display".format(SECOND_EMA)])]["Close"], alpha=critic_probs[(test_set["Prediction"] == 2) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_{}_Display".format(FIRST_EMA)] < test_set["EMA_{}_Display".format(SECOND_EMA)])], color='m', marker='o', label="Fake Buy")
 
     plt.legend()
     plt.show()
@@ -160,8 +161,8 @@ class EMACrossoverDataHandler(DataHandler):
         cols.remove("Target")
         cols.remove("Target_Variation")
         for col in cols:
-            self.predict_data[col] = ta.ema(self.predict_data[col], 10)
-        #self.predict_data[cols] = ta.ema(self.predict_data[cols], 10) SEEMS NOT TO WORK
+            self.predict_data[col] = ta.ema(self.predict_data[col], FIRST_EMA)
+        #self.predict_data[cols] = ta.ema(self.predict_data[cols], FIRST_EMA) SEEMS NOT TO WORK
         self.predict_data.dropna(axis=0, inplace=True)
         '''
         ############################################################################################################
@@ -181,8 +182,8 @@ class EMACrossoverDataHandler(DataHandler):
         """ fig, axis = plt.subplots(1, 1, figsize=[10,5])
                 
         axis.plot(self.display_data.index, self.display_data["Close"], label="Close")
-        axis.plot(self.display_data.index, self.display_data["EMA_10"], label="EMA_10")
-        axis.plot(self.display_data.index, self.display_data["EMA_50"], label="EMA_50")
+        axis.plot(self.display_data.index, self.display_data["EMA_{}".format(FIRST_EMA)], label="EMA_{}".format(FIRST_EMA))
+        axis.plot(self.display_data.index, self.display_data["EMA_{}".format(SECOND_EMA)], label="EMA_{}".format(SECOND_EMA))
         axis.scatter(self.display_data[self.display_data["Target"] == 0].index, self.display_data[self.display_data["Target"] == 0]["Close"], alpha = 0.5, color = 'r', marker = 'o', label="Sell")
         axis.scatter(self.display_data[self.display_data["Target"] == 2].index, self.display_data[self.display_data["Target"] == 2]["Close"], alpha = 0.5, color = 'b', marker = 'o', label="Buy")
         
@@ -328,10 +329,10 @@ class EMACrossoverDataHandler(DataHandler):
         # Our test set is data2021 (Set to potentially change)
         test_set["Date"] = test_date
         test_set["Close"] = self.data["Close"].loc[test_index]
-        test_set["EMA_10_Display"] = ta.ema(test_set["Close"], 10)
-        test_set["EMA_50_Display"] = ta.ema(test_set["Close"], 50)
+        test_set["EMA_{}_Display".format(FIRST_EMA)] = ta.ema(test_set["Close"], FIRST_EMA)
+        test_set["EMA_{}_Display".format(SECOND_EMA)] = ta.ema(test_set["Close"], SECOND_EMA)
                 
-        #print(pd.merge(test_set["EMA_10_Display"], self.predict_data["EMA_10"] * EMA_NORMALIZE_FACTOR))
+        #print(pd.merge(test_set["EMA_{}_Display".format(FIRST_EMA)], self.predict_data["EMA_{}".format(FIRST_EMA)] * EMA_NORMALIZE_FACTOR))
 
         # Backtest of simplest strategy
         simple_strategy_backtest(self.data, model, critic, algorithm, outputs, self.max_days, self.target_range)
