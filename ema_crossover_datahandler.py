@@ -35,7 +35,7 @@ def standard_labeling(data, max_days, target_range, skip_factor=3, preserve_inde
     predict_data["Target"] = predict_data["Target"] + 1
 
     predict_data.dropna(inplace=True)
-    predict_data.reset_index(inplace=True, drop=preserve_index)
+    predict_data.reset_index(inplace=True, drop=(not preserve_index))
     predict_data = predict_data[0:len(predict_data)-target_range]
 
     skip = int(max_days/skip_factor)
@@ -45,6 +45,9 @@ def standard_labeling(data, max_days, target_range, skip_factor=3, preserve_inde
 
     display_data = predict_data[["Unix", "Close", "EMA_10",
                                  "EMA_50", "Target"]][-1000:].copy().reset_index(drop=True)
+    
+    predict_close = predict_data["Close"]
+    
     predict_data.drop(
         ["Open", "Close", "High", "Low", "Symbol"], axis=1, inplace=True)
 
@@ -53,17 +56,22 @@ def standard_labeling(data, max_days, target_range, skip_factor=3, preserve_inde
 
     print("Display Data : \n", display_data.tail(10))
 
-    return predict_data, display_data
+    return predict_data, display_data, predict_close
 
 
 ######################################################################## BACKTEST FUNCTIONS ########################################################################
 
-def simple_strategy_backtest(test_set, model, algorithm, outputs):
-    test_set = test_set[-45000:-44000]
+def simple_strategy_backtest(data, model, critic, algorithm, outputs, max_days, target_range):
+    test_set, _, test_close = standard_labeling(
+                data[-1000:], max_days, target_range, 3, False)
     #test_set = test_set[2064370:2064370+500]
     temp_data = test_set.copy().drop(
-        ["Prediction", "Target", "Date", "Close", "EMA_10_Display", "EMA_50_Display"], axis=1)
+        ["Date", "Target", "Unix"], axis=1)
     temp_target = test_set.copy()["Target"]
+
+    print(temp_data)
+
+    print(temp_target)
 
     try:
         model.evaluate(temp_data, temp_target)
@@ -73,41 +81,62 @@ def simple_strategy_backtest(test_set, model, algorithm, outputs):
     if algorithm == "MLP":
 
         probs = model.predict(temp_data)
+        
+        critic_probs = critic.predict(temp_data)
 
         if outputs >= 3:
             preds = probs.argmax(axis=-1)
         else:
             preds = [1 if i > 0.5 else 0 for i in probs]
+        
+        critic_preds = [1 if i > 0.5 else 0 for i in critic_probs]
+            
+        critic_target = np.where((pd.Series(preds) == temp_target.reset_index(drop=True)), 1, 0)
+            
     elif algorithm == "RF":
         preds = model.predict(temp_data)
 
     print(tf.math.confusion_matrix(temp_target, preds))
-
+    
+    print(tf.math.confusion_matrix(critic_target, critic_preds))
+    
     fig, axis = plt.subplots(1, 1, figsize=[10, 5])
 
+    test_set = test_set.join(test_close)
+    test_set["EMA_10_Display"] = ta.ema(test_set["Close"], 10)
+    test_set["EMA_50_Display"] = ta.ema(test_set["Close"], 50)
+    test_set["Prediction"] = preds
+    
+    test_set.reset_index(inplace=True, drop=True)
+    #critic_probs = pd.Series(critic_probs)
+    
     axis.plot(test_set["Close"].index, test_set["Close"], label="Close")
     axis.plot(test_set["EMA_10_Display"].index,
               test_set["EMA_10_Display"], label="EMA_10")
     axis.plot(test_set["EMA_50_Display"].index,
               test_set["EMA_50_Display"], label="EMA_50")
     #TODO NOT PLOTTING THE RIGHT THING
-    axis.scatter(test_set[(test_set["Target"] == 0)].index, test_set[(
+    """ axis.scatter(test_set[(test_set["Target"] == 0)].index, test_set[(
         test_set["Target"] == 0)]["Close"], alpha=0.5, color='r', marker='o', label="Sell")
     axis.scatter(test_set[(test_set["Target"] == 2)].index, test_set[(
-        test_set["Target"] == 2)]["Close"], alpha=0.5, color='b', marker='o', label="Buy")
-    """ axis.scatter(test_set[(test_set["Target"] == 0) & (test_set["Prediction"] == test_set["Target"])].index, test_set[(
-        test_set["Target"] == 0) & (test_set["Prediction"] == test_set["Target"])]["Close"], alpha=0.5, color='r', marker='o', label="Sell")
-    axis.scatter(test_set[(test_set["Target"] == 2) & (test_set["Prediction"] == test_set["Target"])].index, test_set[(
-        test_set["Target"] == 2) & (test_set["Prediction"] == test_set["Target"])]["Close"], alpha=0.5, color='b', marker='o', label="Buy")
- """
+        test_set["Target"] == 2)]["Close"], alpha=0.5, color='b', marker='o', label="Buy") """
+    axis.scatter(test_set[(test_set["Prediction"] == 0) & (test_set["Prediction"] == test_set["Target"])].index, test_set[(
+        test_set["Prediction"] == 0) & (test_set["Prediction"] == test_set["Target"])]["Close"], alpha=critic_probs[(test_set["Prediction"] == 0) & (test_set["Prediction"] == test_set["Target"])], color='r', marker='o', label="Sell")
+    axis.scatter(test_set[(test_set["Prediction"] == 2) & (test_set["Prediction"] == test_set["Target"])].index, test_set[(
+        test_set["Prediction"] == 2) & (test_set["Prediction"] == test_set["Target"])]["Close"], alpha=critic_probs[(test_set["Prediction"] == 2) & (test_set["Prediction"] == test_set["Target"])], color='b', marker='o', label="Buy")
+    axis.scatter(test_set[(test_set["Prediction"] == 0) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_10_Display"] > test_set["EMA_50_Display"])].index, test_set[(
+        test_set["Prediction"] == 0) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_10_Display"] > test_set["EMA_50_Display"])]["Close"], alpha=critic_probs[(test_set["Prediction"] == 0) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_10_Display"] > test_set["EMA_50_Display"])], color='k', marker='o', label="Fake Sell")
+    axis.scatter(test_set[(test_set["Prediction"] == 2) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_10_Display"] < test_set["EMA_50_Display"])].index, test_set[(
+        test_set["Prediction"] == 2) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_10_Display"] < test_set["EMA_50_Display"])]["Close"], alpha=critic_probs[(test_set["Prediction"] == 2) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_10_Display"] < test_set["EMA_50_Display"])], color='m', marker='o', label="Fake Buy")
+
     plt.legend()
     plt.show()
 
 
 class EMACrossoverDataHandler(DataHandler):
 
-    def __init__(self, csv_path=None):
-        super().__init__(csv_path)
+    def __init__(self, csv_path=None, skip=None):
+        super().__init__(csv_path, skip)
 
     def create_predict_data(self, max_days=15, target_range=3, standard=True, preserve_index=False):
         print("Creating Predict DataFrame...", end='\t')
@@ -120,8 +149,8 @@ class EMACrossoverDataHandler(DataHandler):
         #print("Labeling mode : ", standard)
         if standard:
             read = False
-            self.predict_data, self.display_data = standard_labeling(
-                self.data, max_days, target_range, preserve_index)
+            self.predict_data, self.display_data, _ = standard_labeling(
+                self.data, max_days, target_range, 3, preserve_index)
 
         ################################ USING EMA INSTEAD OF RAW NOISY DATA ######################################
         '''
@@ -184,10 +213,6 @@ class EMACrossoverDataHandler(DataHandler):
                 train_data["Target"] = train_labels
                 train_data, train_labels = sample_equal_target(
                     train_data, method=sampling_method)
-            # TODO Remove ?
-            else:
-                train_data, train_labels = train_data.drop(
-                    "Target", axis=1), train_data["Target"]
 
         
         #test_data, test_labels = test_data.drop("Target", axis=1), test_data["Target"]
@@ -200,23 +225,7 @@ class EMACrossoverDataHandler(DataHandler):
 
         if algorithm == "MLP":
 
-            if outputs == 2:
-
-                model = tf.keras.Sequential([
-                    tf.keras.layers.Flatten(input_shape=shape),
-                    tf.keras.layers.Dense(2*shape[0], activation='relu'),
-                    tf.keras.layers.Dense(4*shape[0], activation='relu'),
-                    tf.keras.layers.Dense(2*shape[0], activation='relu'),
-                    tf.keras.layers.Dense(1, activation='sigmoid')
-                ])
-
-                model.compile(optimizer='adam',
-                              loss=tf.keras.losses.BinaryCrossentropy(),
-                              metrics=['accuracy', 'Precision', 'Recall', 'AUC'])
-
-                epochs = 7
-
-            else:
+            if outputs == 3:
 
                 print("Using {} classes".format(outputs))
 
@@ -231,6 +240,20 @@ class EMACrossoverDataHandler(DataHandler):
                 model.compile(optimizer='adam',
                               loss=tf.keras.losses.SparseCategoricalCrossentropy(),
                               metrics=['accuracy'])
+
+
+                critic = tf.keras.Sequential([
+                    tf.keras.layers.Flatten(input_shape=shape),
+                    tf.keras.layers.Dense(2*shape[0], activation='relu'),
+                    tf.keras.layers.Dense(4*shape[0], activation='relu'),
+                    tf.keras.layers.Dense(2*shape[0], activation='relu'),
+                    tf.keras.layers.Dense(1, activation='sigmoid')
+                ])
+
+                critic.compile(optimizer='adam',
+                        loss=tf.keras.losses.BinaryCrossentropy(),
+                        metrics=['accuracy', 'Precision', 'Recall', 'AUC'])
+
 
                 epochs = 5
 
@@ -247,11 +270,34 @@ class EMACrossoverDataHandler(DataHandler):
 
         print("Using {} model".format(algorithm))
 
-        try:
+        if algorithm == "MLP":
             model.fit(train_data, train_labels, epochs=epochs, validation_split=0.2, callbacks=[
                       tensorboard_callback], batch_size=64)
             model.evaluate(test_data, test_labels)
-        except:
+            
+            probs = model.predict(test_data)
+
+            preds = probs.argmax(axis=-1)
+                        
+            critic_labels = np.where((pd.Series(preds) == test_labels.reset_index(drop=True)), 1, 0)
+            
+            print("Critic Learning...")
+            
+            critic.fit(test_data[:-4000], critic_labels[:-4000], epochs=epochs, validation_split=0.2, batch_size=64)
+            
+            print("Done")
+            
+            critic.evaluate(test_data[-4000:], critic_labels[-4000:])
+            
+            critic_probs = critic.predict(test_data[-4000:])
+            
+            critic_preds = [1 if i > 0.5 else 0 for i in critic_probs]
+            
+            print("Critic Confusion Matrix")
+            print(tf.math.confusion_matrix(critic_labels[-4000:], critic_preds))
+            
+            
+        else:
             model.fit(train_data, train_labels)
             print("{} score : ".format(algorithm),
                   model.score(test_data, test_labels))
@@ -284,11 +330,11 @@ class EMACrossoverDataHandler(DataHandler):
         test_set["Close"] = self.data["Close"].loc[test_index]
         test_set["EMA_10_Display"] = ta.ema(test_set["Close"], 10)
         test_set["EMA_50_Display"] = ta.ema(test_set["Close"], 50)
-        
+                
         #print(pd.merge(test_set["EMA_10_Display"], self.predict_data["EMA_10"] * EMA_NORMALIZE_FACTOR))
 
         # Backtest of simplest strategy
-        simple_strategy_backtest(test_set, model, algorithm, outputs)
+        simple_strategy_backtest(self.data, model, critic, algorithm, outputs, self.max_days, self.target_range)
 
 
 max_days = 30
@@ -296,7 +342,10 @@ target_range = 10
 
 
 def main():
-    handler = EMACrossoverDataHandler("minute_data/BTC-USD_1M_SIGNALS.csv")
+    
+    timeframe_skips = {'1m':1, '15m':15, '1h':60, '4h':240}
+    
+    handler = EMACrossoverDataHandler("minute_data/BTC-USD_1M_SIGNALS.csv", timeframe_skips["1m"])
 
     handler.fit_predict(labeling=True, equal_sampling=True,
                         sampling_method="undersample", algorithm="MLP")

@@ -1,7 +1,7 @@
 from data_processing import *
 
 class DataHandler:
-    def __init__(self, csv_path=None):
+    def __init__(self, csv_path=None, skip=None):
         self.data_scaler = None
         self.max_days = None
         self.target_range = None
@@ -15,6 +15,8 @@ class DataHandler:
                 self.data.sort_values(
                     by="Unix", ascending=True, inplace=True, ignore_index=True)
                 # TODO ADD CODE TO DETERMINE TIMEFRAME FROM DIFFERENCE IN TIME BETWEEN TWO FIRST ELEMENTS OF DATA
+                if skip != None:
+                    self.data =self.data[[i % skip == 0 for i in range(self.data.shape[0])]]
                 self.timeframe = ''
             except:
                 print("Failed to import data from path {}".format(csv_path))
