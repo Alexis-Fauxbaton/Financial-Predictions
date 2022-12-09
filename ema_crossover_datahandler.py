@@ -64,7 +64,7 @@ def standard_labeling(data, max_days, target_range, skip_factor=3, preserve_inde
 
 def simple_strategy_backtest(data, model, critic, algorithm, outputs, max_days, target_range):
     test_set, _, test_close = standard_labeling(
-                data[-3000:], max_days, target_range, 3, False)
+                data[-4000:], max_days, target_range, 3, False)
     #test_set = test_set[2064370:2064370+500]
     temp_data = test_set.copy().drop(
         ["Date", "Target", "Unix"], axis=1)
@@ -91,7 +91,7 @@ def simple_strategy_backtest(data, model, critic, algorithm, outputs, max_days, 
             preds = [1 if i > 0.5 else 0 for i in probs]
         
         critic_preds = [1 if i > 0.5 else 0 for i in critic_probs]
-            
+        
         critic_target = np.where((pd.Series(preds) == temp_target.reset_index(drop=True)), 1, 0)
             
     elif algorithm == "RF":
@@ -100,6 +100,45 @@ def simple_strategy_backtest(data, model, critic, algorithm, outputs, max_days, 
     print(tf.math.confusion_matrix(temp_target, preds))
     
     print(tf.math.confusion_matrix(critic_target, critic_preds))
+    
+    
+    initial_balance = 100
+    usd_held = initial_balance
+    shares_held = 0
+    net_worth = []
+    baseline_net_worth = []
+    baseline_shares_held = 0
+    
+    idx = 0
+    for price in test_close.values:
+        #print("USD : {} || Shares : {} || Price : {}".format(usd_held, shares_held, price))
+        
+        if preds[idx] == 2 and critic_preds[idx] == 1:
+            #print(2)
+            flowing_amount = usd_held * 0.1
+            usd_held = usd_held - flowing_amount
+            shares_held = shares_held + flowing_amount / price
+            
+        elif preds[idx] == 0 and critic_preds[idx] == 1:
+            #print(0)
+            flowing_amount = shares_held * 0.1
+            shares_held = shares_held - flowing_amount
+            usd_held = usd_held + flowing_amount * price
+                        
+        if idx == 0:
+            baseline_shares_held = initial_balance / price
+        
+        baseline_net_worth.append(baseline_shares_held * price)
+                
+        net_worth.append(usd_held + shares_held * price)
+        
+        idx += 1
+    
+    print("Begin Price : {} || End Price : {}".format(test_close.values[0], test_close.values[-1]))
+    print("Baseline Factor : {}".format((test_close.values[0] - test_close.values[-1]) / test_close.values[0]))
+    print("Strategy net worth : {}\nBaseline Strategy net worth : {}".format(net_worth[-1], baseline_net_worth[-1]))
+    
+    print(baseline_net_worth[:15])
     
     fig, axis = plt.subplots(1, 1, figsize=[10, 5])
 
@@ -116,11 +155,7 @@ def simple_strategy_backtest(data, model, critic, algorithm, outputs, max_days, 
               test_set["EMA_{}_Display".format(FIRST_EMA)], label="EMA_{}".format(FIRST_EMA))
     axis.plot(test_set["EMA_{}_Display".format(SECOND_EMA)].index,
               test_set["EMA_{}_Display".format(SECOND_EMA)], label="EMA_{}".format(SECOND_EMA))
-    #TODO NOT PLOTTING THE RIGHT THING
-    """ axis.scatter(test_set[(test_set["Target"] == 0)].index, test_set[(
-        test_set["Target"] == 0)]["Close"], alpha=0.5, color='r', marker='o', label="Sell")
-    axis.scatter(test_set[(test_set["Target"] == 2)].index, test_set[(
-        test_set["Target"] == 2)]["Close"], alpha=0.5, color='b', marker='o', label="Buy") """
+
     axis.scatter(test_set[(test_set["Prediction"] == 0) & (test_set["Prediction"] == test_set["Target"])].index, test_set[(
         test_set["Prediction"] == 0) & (test_set["Prediction"] == test_set["Target"])]["Close"], alpha=critic_probs[(test_set["Prediction"] == 0) & (test_set["Prediction"] == test_set["Target"])], color='r', marker='o', label="Sell")
     axis.scatter(test_set[(test_set["Prediction"] == 2) & (test_set["Prediction"] == test_set["Target"])].index, test_set[(
@@ -129,6 +164,12 @@ def simple_strategy_backtest(data, model, critic, algorithm, outputs, max_days, 
         test_set["Prediction"] == 0) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_{}_Display".format(FIRST_EMA)] > test_set["EMA_{}_Display".format(SECOND_EMA)])]["Close"], alpha=critic_probs[(test_set["Prediction"] == 0) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_{}_Display".format(FIRST_EMA)] > test_set["EMA_{}_Display".format(SECOND_EMA)])], color='k', marker='o', label="Fake Sell")
     axis.scatter(test_set[(test_set["Prediction"] == 2) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_{}_Display".format(FIRST_EMA)] < test_set["EMA_{}_Display".format(SECOND_EMA)])].index, test_set[(
         test_set["Prediction"] == 2) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_{}_Display".format(FIRST_EMA)] < test_set["EMA_{}_Display".format(SECOND_EMA)])]["Close"], alpha=critic_probs[(test_set["Prediction"] == 2) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_{}_Display".format(FIRST_EMA)] < test_set["EMA_{}_Display".format(SECOND_EMA)])], color='m', marker='o', label="Fake Buy")
+
+
+    net_worth_axis = axis.twinx()
+    #reward_list = self.reward_list
+    net_worth_axis.plot(range(len(net_worth)), net_worth, label="Net Worth", alpha = 0.25)
+    net_worth_axis.plot(range(len(net_worth)), baseline_net_worth, label="Baseline Net Worth", alpha = 0.25)
 
     plt.legend()
     plt.show()
@@ -147,7 +188,6 @@ class EMACrossoverDataHandler(DataHandler):
             self.target_range = target_range
         self.predict_data = None
         self.add_gaussian_mixture()
-        #print("Labeling mode : ", standard)
         if standard:
             read = False
             self.predict_data, self.display_data, _ = standard_labeling(
