@@ -3,10 +3,11 @@ from datahandler import *
 import pandas_ta as ta
 from sklearn.ensemble import RandomForestClassifier
 import sys
+import os
 
 EMA_NORMALIZE_FACTOR = 70000  # TODO Find better option
-FIRST_EMA = 10
-SECOND_EMA = 50
+FIRST_EMA = 10#10
+SECOND_EMA = 50#50
 
 def standard_labeling(data, max_days, target_range, skip_factor=3, preserve_index=False):
 
@@ -62,17 +63,23 @@ def standard_labeling(data, max_days, target_range, skip_factor=3, preserve_inde
 
 ######################################################################## BACKTEST FUNCTIONS ########################################################################
 
-def simple_strategy_backtest(data, model, critic, algorithm, outputs, max_days, target_range):
+def simple_strategy_backtest(data, model, critic, algorithm, outputs, max_days, target_range, critic_test_size):
     test_set, _, test_close = standard_labeling(
-                data[-4000:], max_days, target_range, 3, False)
+                data[-critic_test_size:], max_days, target_range, 3, False)
     #test_set = test_set[2064370:2064370+500]
     temp_data = test_set.copy().drop(
-        ["Date", "Target", "Unix"], axis=1)
-    temp_target = test_set.copy()["Target"]
+        ["Date", "Target", "Unix"], axis=1).reset_index(drop=True)
+    temp_target = test_set.copy()["Target"].reset_index(drop=True)
+    
+    test_close.reset_index(inplace=True, drop=True)
 
     print(temp_data)
 
     print(temp_target)
+    
+    test_rsi = ta.rsi(test_close, 14).reset_index(drop=True)[-critic_test_size:]
+
+    print(test_rsi)
 
     try:
         model.evaluate(temp_data, temp_target)
@@ -108,25 +115,28 @@ def simple_strategy_backtest(data, model, critic, algorithm, outputs, max_days, 
     net_worth = []
     baseline_net_worth = []
     baseline_shares_held = 0
+    usd_balance = []
     
     idx = 0
     for price in test_close.values:
         #print("USD : {} || Shares : {} || Price : {}".format(usd_held, shares_held, price))
         
-        if preds[idx] == 2 and critic_preds[idx] == 1:
+        if preds[idx] == 2 and critic_probs[idx] >= 0.55:# and test_rsi[idx] <= 65:
             #print(2)
-            flowing_amount = usd_held * 0.1
+            flowing_amount = usd_held * 0.25
             usd_held = usd_held - flowing_amount
             shares_held = shares_held + flowing_amount / price
             
-        elif preds[idx] == 0 and critic_preds[idx] == 1:
+        elif preds[idx] == 0 and critic_probs[idx] >= 0.55:# and test_rsi[idx] >= 35:
             #print(0)
-            flowing_amount = shares_held * 0.1
+            flowing_amount = shares_held * 0.25
             shares_held = shares_held - flowing_amount
             usd_held = usd_held + flowing_amount * price
                         
         if idx == 0:
             baseline_shares_held = initial_balance / price
+        
+        usd_balance.append(usd_held)
         
         baseline_net_worth.append(baseline_shares_held * price)
                 
@@ -140,7 +150,7 @@ def simple_strategy_backtest(data, model, critic, algorithm, outputs, max_days, 
     
     print(baseline_net_worth[:15])
     
-    fig, axis = plt.subplots(1, 1, figsize=[10, 5])
+    fig, axis = plt.subplots(2, 1, figsize=[10, 5])
 
     test_set = test_set.join(test_close)
     test_set["EMA_{}_Display".format(FIRST_EMA)] = ta.ema(test_set["Close"], FIRST_EMA)
@@ -150,26 +160,28 @@ def simple_strategy_backtest(data, model, critic, algorithm, outputs, max_days, 
     test_set.reset_index(inplace=True, drop=True)
     #critic_probs = pd.Series(critic_probs)
     
-    axis.plot(test_set["Close"].index, test_set["Close"], label="Close")
-    axis.plot(test_set["EMA_{}_Display".format(FIRST_EMA)].index,
+    axis[0].plot(test_set["Close"].index, test_set["Close"], label="Close")
+    axis[0].plot(test_set["EMA_{}_Display".format(FIRST_EMA)].index,
               test_set["EMA_{}_Display".format(FIRST_EMA)], label="EMA_{}".format(FIRST_EMA))
-    axis.plot(test_set["EMA_{}_Display".format(SECOND_EMA)].index,
+    axis[0].plot(test_set["EMA_{}_Display".format(SECOND_EMA)].index,
               test_set["EMA_{}_Display".format(SECOND_EMA)], label="EMA_{}".format(SECOND_EMA))
 
-    axis.scatter(test_set[(test_set["Prediction"] == 0) & (test_set["Prediction"] == test_set["Target"])].index, test_set[(
+    axis[0].scatter(test_set[(test_set["Prediction"] == 0) & (test_set["Prediction"] == test_set["Target"])].index, test_set[(
         test_set["Prediction"] == 0) & (test_set["Prediction"] == test_set["Target"])]["Close"], alpha=critic_probs[(test_set["Prediction"] == 0) & (test_set["Prediction"] == test_set["Target"])], color='r', marker='o', label="Sell")
-    axis.scatter(test_set[(test_set["Prediction"] == 2) & (test_set["Prediction"] == test_set["Target"])].index, test_set[(
+    axis[0].scatter(test_set[(test_set["Prediction"] == 2) & (test_set["Prediction"] == test_set["Target"])].index, test_set[(
         test_set["Prediction"] == 2) & (test_set["Prediction"] == test_set["Target"])]["Close"], alpha=critic_probs[(test_set["Prediction"] == 2) & (test_set["Prediction"] == test_set["Target"])], color='b', marker='o', label="Buy")
-    axis.scatter(test_set[(test_set["Prediction"] == 0) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_{}_Display".format(FIRST_EMA)] > test_set["EMA_{}_Display".format(SECOND_EMA)])].index, test_set[(
+    axis[0].scatter(test_set[(test_set["Prediction"] == 0) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_{}_Display".format(FIRST_EMA)] > test_set["EMA_{}_Display".format(SECOND_EMA)])].index, test_set[(
         test_set["Prediction"] == 0) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_{}_Display".format(FIRST_EMA)] > test_set["EMA_{}_Display".format(SECOND_EMA)])]["Close"], alpha=critic_probs[(test_set["Prediction"] == 0) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_{}_Display".format(FIRST_EMA)] > test_set["EMA_{}_Display".format(SECOND_EMA)])], color='k', marker='o', label="Fake Sell")
-    axis.scatter(test_set[(test_set["Prediction"] == 2) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_{}_Display".format(FIRST_EMA)] < test_set["EMA_{}_Display".format(SECOND_EMA)])].index, test_set[(
+    axis[0].scatter(test_set[(test_set["Prediction"] == 2) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_{}_Display".format(FIRST_EMA)] < test_set["EMA_{}_Display".format(SECOND_EMA)])].index, test_set[(
         test_set["Prediction"] == 2) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_{}_Display".format(FIRST_EMA)] < test_set["EMA_{}_Display".format(SECOND_EMA)])]["Close"], alpha=critic_probs[(test_set["Prediction"] == 2) & (test_set["Prediction"] != test_set["Target"]) & (test_set["EMA_{}_Display".format(FIRST_EMA)] < test_set["EMA_{}_Display".format(SECOND_EMA)])], color='m', marker='o', label="Fake Buy")
 
 
-    net_worth_axis = axis.twinx()
+    net_worth_axis = axis[0].twinx()
     #reward_list = self.reward_list
     net_worth_axis.plot(range(len(net_worth)), net_worth, label="Net Worth", alpha = 0.25)
     net_worth_axis.plot(range(len(net_worth)), baseline_net_worth, label="Baseline Net Worth", alpha = 0.25)
+
+    axis[1].plot(range(len(usd_balance)), usd_balance, label="USD Balance")
 
     plt.legend()
     plt.show()
@@ -208,7 +220,7 @@ class EMACrossoverDataHandler(DataHandler):
         ############################################################################################################
         print("Done")
 
-    def fit_predict(self, train_start="1/1/2017", train_end="1/1/2021", test_start="1/1/2021", test_end="1/1/2023", max_days=15, target_range=3, labeling=True, equal_sampling=False, sampling_method="undersample", epochs=10, algorithm="MLP"):
+    def fit_predict(self, train_start="1/1/2017", train_end="1/1/2021", test_start="1/1/2021", test_end="1/1/2023", max_days=15, target_range=3, labeling=True, equal_sampling=False, sampling_method="undersample", epochs=10, algorithm="MLP", critic_test_size=4000):
         if self.predict_data == None:
             self.create_predict_data(max_days, target_range, labeling, True)
 
@@ -324,18 +336,18 @@ class EMACrossoverDataHandler(DataHandler):
             
             print("Critic Learning...")
             
-            critic.fit(test_data[:-4000], critic_labels[:-4000], epochs=epochs, validation_split=0.2, batch_size=64)
+            critic.fit(test_data[:-critic_test_size], critic_labels[:-critic_test_size], epochs=10, validation_split=0.2, batch_size=64)
             
             print("Done")
             
-            critic.evaluate(test_data[-4000:], critic_labels[-4000:])
+            critic.evaluate(test_data[-critic_test_size:], critic_labels[-critic_test_size:])
             
-            critic_probs = critic.predict(test_data[-4000:])
+            critic_probs = critic.predict(test_data[-critic_test_size:])
             
             critic_preds = [1 if i > 0.5 else 0 for i in critic_probs]
             
             print("Critic Confusion Matrix")
-            print(tf.math.confusion_matrix(critic_labels[-4000:], critic_preds))
+            print(tf.math.confusion_matrix(critic_labels[-critic_test_size:], critic_preds))
             
             
         else:
@@ -375,7 +387,7 @@ class EMACrossoverDataHandler(DataHandler):
         #print(pd.merge(test_set["EMA_{}_Display".format(FIRST_EMA)], self.predict_data["EMA_{}".format(FIRST_EMA)] * EMA_NORMALIZE_FACTOR))
 
         # Backtest of simplest strategy
-        simple_strategy_backtest(self.data, model, critic, algorithm, outputs, self.max_days, self.target_range)
+        simple_strategy_backtest(self.data, model, critic, algorithm, outputs, self.max_days, self.target_range, critic_test_size)
 
 
 max_days = 30
@@ -389,9 +401,11 @@ def main():
     handler = EMACrossoverDataHandler("minute_data/BTC-USD_1M_SIGNALS.csv", timeframe_skips["1m"])
 
     handler.fit_predict(labeling=True, equal_sampling=True,
-                        sampling_method="undersample", algorithm="MLP")
+                        sampling_method="undersample", algorithm="MLP", critic_test_size=10000, max_days = 15, target_range=5)
 
 
 if __name__ == "__main__":
-
+    
+    os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+    
     main()
