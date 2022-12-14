@@ -17,8 +17,8 @@ def standard_labeling(data, max_days, target_range, skip_factor=3, preserve_inde
     #predict_data["EMA_200"] = ta.ema(predict_data["Close"], 200)
 
     for i in range(1, max_days):
-        predict_data[["Variation-{}".format(i), "RSI-{}".format(i), "MACD-{}".format(
-            i), "MACD_H-{}".format(i), "Regime-{}".format(i)]] = data[["Variation", "RSI", "MACD", "MACD_H", "Regime"]].shift(i)
+        predict_data[["Variation-{}".format(i), "Volume-{}".format(i), "RSI-{}".format(i), "MACD-{}".format(
+            i), "MACD_H-{}".format(i), "Regime-{}".format(i)]] = data[["Variation", "Volume USD", "RSI", "MACD", "MACD_H", "Regime"]].shift(i)
     predict_data["Target"] = (
         predict_data["Close"].shift(-target_range) - data["Close"] >= 0)
 
@@ -192,7 +192,7 @@ class EMACrossoverDataHandler(DataHandler):
     def __init__(self, csv_path=None, skip=None):
         super().__init__(csv_path, skip)
 
-    def create_predict_data(self, max_days=15, target_range=3, standard=True, preserve_index=False):
+    def create_predict_data(self, max_days=15, target_range=3, standard=True, preserve_index=False, data=None):
         print("Creating Predict DataFrame...", end='\t')
         if self.max_days == None:
             self.max_days = max_days
@@ -200,10 +200,15 @@ class EMACrossoverDataHandler(DataHandler):
             self.target_range = target_range
         self.predict_data = None
         self.add_gaussian_mixture()
+        label_data = None
+        if data != None:
+            label_data = data
+        else:
+            label_data = self.data
         if standard:
             read = False
             self.predict_data, self.display_data, _ = standard_labeling(
-                self.data, max_days, target_range, 3, preserve_index)
+                label_data, max_days, target_range, 3, preserve_index)
 
         ################################ USING EMA INSTEAD OF RAW NOISY DATA ######################################
         '''
@@ -219,16 +224,15 @@ class EMACrossoverDataHandler(DataHandler):
         '''
         ############################################################################################################
         print("Done")
+        return self.predict_data
 
     def fit_predict(self, train_start="1/1/2017", train_end="1/1/2021", test_start="1/1/2021", test_end="1/1/2023", max_days=15, target_range=3, labeling=True, equal_sampling=False, sampling_method="undersample", epochs=10, algorithm="MLP", critic_test_size=4000):
         if self.predict_data == None:
             self.create_predict_data(max_days, target_range, labeling, True)
 
-        #test_index = self.predict_data["index"]
-        
-        #self.predict_data.drop("index", axis=1, inplace=True)
+        return
 
-        print("Predict Data : \n{}".format(self.predict_data))
+        #print("Predict Data : \n{}".format(self.predict_data))
 
 
         """ fig, axis = plt.subplots(1, 1, figsize=[10,5])
@@ -256,7 +260,7 @@ class EMACrossoverDataHandler(DataHandler):
         train_data.drop("index", axis=1, inplace=True)
 
         test_index = test_data["index"]
-        print("Test Index\n", test_index)
+        #print("Test Index\n", test_index)
 
         test_data.drop("index", axis=1, inplace=True)
         
@@ -371,9 +375,9 @@ class EMACrossoverDataHandler(DataHandler):
 
         test_set = test_data.copy()
 
-        print("Predict Data After : \n", self.predict_data)
+        #print("Predict Data After : \n", self.predict_data)
 
-        print("Test Set : \n", test_set)
+        #print("Test Set : \n", test_set)
 
         test_set["Prediction"] = preds
         test_set["Target"] = test_labels
@@ -383,11 +387,15 @@ class EMACrossoverDataHandler(DataHandler):
         test_set["Close"] = self.data["Close"].loc[test_index]
         test_set["EMA_{}_Display".format(FIRST_EMA)] = ta.ema(test_set["Close"], FIRST_EMA)
         test_set["EMA_{}_Display".format(SECOND_EMA)] = ta.ema(test_set["Close"], SECOND_EMA)
-                
+        
+        self.model = model
+        
+        self.critic = critic
+        
         #print(pd.merge(test_set["EMA_{}_Display".format(FIRST_EMA)], self.predict_data["EMA_{}".format(FIRST_EMA)] * EMA_NORMALIZE_FACTOR))
 
         # Backtest of simplest strategy
-        simple_strategy_backtest(self.data, model, critic, algorithm, outputs, self.max_days, self.target_range, critic_test_size)
+        #simple_strategy_backtest(self.data, model, critic, algorithm, outputs, self.max_days, self.target_range, critic_test_size)
 
 
 max_days = 30

@@ -7,6 +7,8 @@ class DataHandler:
         self.target_range = None
         self.columns_to_scale = None
         self.predict_data = None
+        self.model = None
+        self.critic = None
         if csv_path == None:
             self.data = None
         else:
