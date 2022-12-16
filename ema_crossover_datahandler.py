@@ -9,6 +9,8 @@ EMA_NORMALIZE_FACTOR = 70000  # TODO Find better option
 FIRST_EMA = 10#10
 SECOND_EMA = 50#50
 
+timeframe_skips = {'1m':1, '15m':15, '1h':60, '4h':240}
+
 def standard_labeling(data, max_days, target_range, skip_factor=3, preserve_index=False):
 
     predict_data = data.copy()
@@ -189,7 +191,7 @@ def simple_strategy_backtest(data, model, critic, algorithm, outputs, max_days, 
 
 class EMACrossoverDataHandler(DataHandler):
 
-    def __init__(self, csv_path=None, skip=None):
+    def __init__(self, csv_path=None, skip=timeframe_skips['1m']):
         super().__init__(csv_path, skip)
 
     def create_predict_data(self, max_days=15, target_range=3, standard=True, preserve_index=False, data=None):
@@ -226,11 +228,10 @@ class EMACrossoverDataHandler(DataHandler):
         print("Done")
         return self.predict_data
 
-    def fit_predict(self, train_start="1/1/2017", train_end="1/1/2021", test_start="1/1/2021", test_end="1/1/2023", max_days=15, target_range=3, labeling=True, equal_sampling=False, sampling_method="undersample", epochs=10, algorithm="MLP", critic_test_size=4000):
+    def fit_predict(self, train_start="1/1/2017", train_end="1/1/2021", test_start="1/1/2021", test_end="1/1/2023", max_days=15, target_range=3, labeling=True, equal_sampling=False, sampling_method="undersample", epochs=10, algorithm="MLP", critic_test_size=4000, batch_size=64, critic_batch_size=64):
         if self.predict_data == None:
             self.create_predict_data(max_days, target_range, labeling, True)
 
-        return
 
         #print("Predict Data : \n{}".format(self.predict_data))
 
@@ -271,6 +272,7 @@ class EMACrossoverDataHandler(DataHandler):
                 train_data, train_labels = sample_equal_target(
                     train_data, method=sampling_method)
 
+        print(list(train_data.columns))
         
         #test_data, test_labels = test_data.drop("Target", axis=1), test_data["Target"]
 
@@ -329,7 +331,7 @@ class EMACrossoverDataHandler(DataHandler):
 
         if algorithm == "MLP":
             model.fit(train_data, train_labels, epochs=epochs, validation_split=0.2, callbacks=[
-                      tensorboard_callback], batch_size=64)
+                      tensorboard_callback], batch_size=batch_size)
             model.evaluate(test_data, test_labels)
             
             probs = model.predict(test_data)
@@ -340,7 +342,7 @@ class EMACrossoverDataHandler(DataHandler):
             
             print("Critic Learning...")
             
-            critic.fit(test_data[:-critic_test_size], critic_labels[:-critic_test_size], epochs=10, validation_split=0.2, batch_size=64)
+            critic.fit(test_data[:-critic_test_size], critic_labels[:-critic_test_size], epochs=epochs, validation_split=0.2, batch_size=critic_batch_size)
             
             print("Done")
             
@@ -403,8 +405,6 @@ target_range = 10
 
 
 def main():
-    
-    timeframe_skips = {'1m':1, '15m':15, '1h':60, '4h':240}
     
     handler = EMACrossoverDataHandler("minute_data/BTC-USD_1M_SIGNALS.csv", timeframe_skips["1m"])
 

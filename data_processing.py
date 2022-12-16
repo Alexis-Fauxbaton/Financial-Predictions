@@ -14,13 +14,17 @@ import tensorflow as tf
 from sklearn.mixture import GaussianMixture
 from imblearn.under_sampling import RandomUnderSampler
 from imblearn.over_sampling import RandomOverSampler
-
+from enum import Enum
 #from predict import create_predict_data
 
 pd.set_option('display.max_rows', 500)
 
 # Only processes 1m data for now
-
+class TimeFrame(Enum):
+    ONE_MINUTE = 1
+    THIRTY_MINUTE = 30
+    ONE_HOUR = 60
+    FOUR_HOURS = 240
 
 def add_adx(data, interval=14):
     #data.ta.adx(cumulative=True, append=True)
@@ -76,6 +80,14 @@ def add_percent_return(data, interval=1):
 
     return data
 
+def add_indicators(data):
+    data = add_percent_return(data)
+    data = add_log_return(data)
+    data = add_rsi(data)
+    data = add_macd(data)
+    data = add_adx(data)
+
+    return data
 
 ###################################################### INDICATORS FOR HIGHER TIMEFRAMES #################################################################
 
@@ -135,6 +147,19 @@ def miners_revenue(data):
 
     return df
 
+############################################################ STANDARDIZE INDICATORS  #######################################################################
+
+
+def standardize_indicators(data, method="standard"):
+    columns_to_scale = ["Volume USD", "MACD", "MACD_H",
+                                "RSI", "PERCENT_RETURN", "LOG_RETURN", "ADX14", "-DM", "+DM"]
+    if method == "standard":
+        if data_scaler == None:
+            data_scaler = StandardScaler()
+        data[columns_to_scale] = data_scaler.fit_transform(
+            data[columns_to_scale])
+        
+    return data, data_scaler
 
 def standardize_col(data, col):
     df = data.copy()
@@ -226,8 +251,30 @@ def custom_splitter(data1, data2):
         return train_data, train_labels, test_data, test_labels, data2["Target_Variation"] 
     except:
         return train_data, train_labels, test_data, test_labels, None    
+
+########################################################## Data Resampling #################################################################################   
+
+'''
+Here we make the assumption that the already available data is 1m since this is a higher frequency timeframe
+from which we can resample to higher timeframe
+'''
+def resample_data(data, timeframe:TimeFrame):
+    #We don't change Open as it will always be the beginning of the actual candle
+    data['Close'] = data.loc[data.index + timeframe, 'Close']
     
+    data['High'] = data['High'].rolling(timeframe).max()
     
+    data['Low'] = data['Low'].rolling.min()
+    
+    data['Volume USD'] = data['Volume USD'].rolling(timeframe).sum()
+    
+    data = add_indicators(data)
+    
+    #TODO FINISH THIS FUNCTION
+    data, data_scaler = standardize_indicators(data)
+    
+    return data
+
 ########################################################## Standard Data Processing Functions #################################################################################   
     
 
