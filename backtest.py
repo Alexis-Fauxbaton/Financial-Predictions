@@ -224,9 +224,14 @@ class BackTestEnv:
         
         self.probs = self.model.predict(self.predict_data.drop(['Date', 'Unix', 'Target', 'index'], axis=1))
         
-        self.preds = self.probs.argmax(axis=-1)
+        self.preds = pd.Series(self.probs.argmax(axis=-1), name='Preds')
+        print("Prediction type, ", type(self.preds))
+        self.preds['Unix'] = self.predict_data['Unix']
         
         self.critics = self.critic.predict(self.predict_data.drop(['Date', 'Unix', 'Target', 'index'], axis=1))
+        print(self.critics.head())
+        self.critics = pd.Series(self.critics, name='Critics')
+        self.critics['Unix'] = self.predict_data['Unix']
 
     def step(self):
         curr_data = self.datahandler.data[self.current_unix -
@@ -237,6 +242,10 @@ class BackTestEnv:
 
         curr_predict_data = self.predict_data.loc[self.predict_data["Unix"]
                                                   == self.current_unix]
+
+        curr_pred = self.preds.loc[self.preds["Unix"]==self.current_unix]
+        
+        curr_critic = self.critics.loc[self.critics["Unix"]==self.current_unix]
 
         # To drop for predictions : Date, Unix, Target
         #print(curr_predict_data.columns)
