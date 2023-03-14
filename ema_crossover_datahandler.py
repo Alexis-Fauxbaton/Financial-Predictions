@@ -201,7 +201,6 @@ class EMACrossoverDataHandler(DataHandler):
         if self.target_range == None:
             self.target_range = target_range
         self.predict_data = None
-        self.add_gaussian_mixture()
         label_data = None
         if data != None:
             label_data = data
@@ -397,7 +396,7 @@ class EMACrossoverDataHandler(DataHandler):
         #print(pd.merge(test_set["EMA_{}_Display".format(FIRST_EMA)], self.predict_data["EMA_{}".format(FIRST_EMA)] * EMA_NORMALIZE_FACTOR))
 
         # Backtest of simplest strategy
-        #simple_strategy_backtest(self.data, model, critic, algorithm, outputs, self.max_days, self.target_range, critic_test_size)
+        simple_strategy_backtest(self.data, model, critic, algorithm, outputs, self.max_days, self.target_range, critic_test_size)
 
 
 max_days = 30
@@ -408,8 +407,11 @@ def main():
     
     handler = EMACrossoverDataHandler("minute_data/BTC-USD_1M_SIGNALS.csv", timeframe_skips["1m"])
 
-    handler.fit_predict(labeling=True, equal_sampling=True,
+    '''handler.fit_predict(labeling=True, equal_sampling=True,
                         sampling_method="undersample", algorithm="MLP", critic_test_size=10000, max_days = 15, target_range=5)
+    '''
+    handler.fit_predict(labeling=True, equal_sampling=True,
+                        sampling_method="undersample", algorithm="MLP", critic_test_size=10000, max_days = 20, target_range=10)
 
 
 if __name__ == "__main__":

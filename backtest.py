@@ -322,7 +322,7 @@ class BackTestEnv:
         self.trading_amount, transfer_to_balance = self.order_list.update_orders(
             curr_data['High'].item(), curr_data['Low'].item(), curr_data['Close'].item(), order_action)
 
-        self.prices.append(curr_data['Close'])
+        self.prices.append(curr_data.loc[0,'Close'].item())
 
         self.net_worth.append(self.balance + self.trading_amount)
         
@@ -377,6 +377,11 @@ if __name__ == "__main__":
     axis.plot(N, prices, label='Price')
     
     #TODO FIX N size and prices[...] size that must be the same
+    print(N[orders_passed == OrderType.LONG.value])
+    print(prices[orders_passed == OrderType.LONG.value])
+    
+    axis.plot(N, prices, label="Asset Prices")
+    
     axis.scatter(N[orders_passed == OrderType.LONG.value], prices[orders_passed == OrderType.LONG.value], 'o', color='b', label='Long')
     
     axis.scatter(N[orders_passed == OrderType.SHORT.value], prices[orders_passed == OrderType.SHORT.value], 'o', color='r', label='Short')

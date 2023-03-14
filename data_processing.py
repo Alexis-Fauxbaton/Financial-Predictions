@@ -10,8 +10,6 @@ import requests
 import pandas_ta as ta
 from sklearn.preprocessing import StandardScaler
 import imblearn
-import tensorflow as tf
-from sklearn.mixture import GaussianMixture
 from imblearn.under_sampling import RandomUnderSampler
 from imblearn.over_sampling import RandomOverSampler
 from enum import Enum
@@ -26,6 +24,16 @@ class TimeFrame(Enum):
     ONE_HOUR = 60
     FOUR_HOURS = 240
 
+class Indicators(Enum):
+    RSI = "RSI"
+    MACD = ["MACD", "MACD_H"]
+    ADX = ["ADX14", "-DM", "+DM"]
+    PERC_RET = "PERC_RET"
+    OBV = "OBV"
+    QAV = "QAV"
+    NTRADES = "NTRADES"
+    LOG_RET = "LOG_RET"
+    
 def add_adx(data, interval=14):
     #data.ta.adx(cumulative=True, append=True)
     adx_cols = ta.adx(data["High"], data["Low"],
@@ -41,7 +49,7 @@ def add_adx(data, interval=14):
 def add_rsi(data, interval=14):
     rsi = ta.rsi(data["Close"], length=interval)
 
-    rsi = rsi.rename("RSI", axis=1)
+    rsi = rsi.rename("RSI")
 
     data = data.join(rsi)
 
@@ -64,7 +72,7 @@ def add_log_return(data, interval=1):
     data.dropna(inplace=True, axis=0)
     log_r = ta.log_return(data["Close"], length=interval)
 
-    log_r = log_r.rename("LOG_RETURN", axis=1)
+    log_r = log_r.rename("LOG_RETURN")
 
     data = data.join(log_r)
 
@@ -74,9 +82,38 @@ def add_percent_return(data, interval=1):
     percent_r = ta.percent_return(data["Close"], length=interval)
 
     #percent_r = percent_r.rename("PERCENT_RETURN", axis=1)
-    percent_r = percent_r.rename("Variation", axis=1)
+    percent_r = percent_r.rename("PERC_RET")
 
     data = data.join(percent_r)
+
+    return data
+
+def add_obv(data):
+    obv = ta.obv(data["Close"], data["Volume"])
+        
+    obv = ta.percent_return(obv, length=1)
+    
+    obv = obv.rename("OBV")
+    
+    data = data.join(obv)
+    
+    return data
+
+def add_qav_var(data, interval=1):
+    qav = ta.percent_return(data["Quote Asset Volume"], length=interval)
+
+    qav = qav.rename("Quote Asset Volume Var")
+
+    data = data.join(qav)
+
+    return data
+
+def add_ntrades_var(data, interval=1):
+    nt = ta.percent_return(data["NTrades"], length=interval)
+
+    nt = nt.rename("NTrades Var")
+
+    data = data.join(nt)
 
     return data
 
@@ -86,6 +123,7 @@ def add_indicators(data):
     data = add_rsi(data)
     data = add_macd(data)
     data = add_adx(data)
+    data = add_obv(data)
 
     return data
 
@@ -94,8 +132,8 @@ def add_indicators(data):
 
 def fear_and_greed():
 
-    URL = "https://api.alternative.me/fng/?limit=0"
-    r = requests.get(url=URL)
+    url = "https://api.alternative.me/fng/?limit=0"
+    r = requests.get(url=url)
     fng = r.json()
     fng = pd.DataFrame(fng['data'])
     fng["timestamp"] = fng["timestamp"].astype(int)
@@ -148,18 +186,6 @@ def miners_revenue(data):
     return df
 
 ############################################################ STANDARDIZE INDICATORS  #######################################################################
-
-
-def standardize_indicators(data, method="standard"):
-    columns_to_scale = ["Volume USD", "MACD", "MACD_H",
-                                "RSI", "PERCENT_RETURN", "LOG_RETURN", "ADX14", "-DM", "+DM"]
-    if method == "standard":
-        if data_scaler == None:
-            data_scaler = StandardScaler()
-        data[columns_to_scale] = data_scaler.fit_transform(
-            data[columns_to_scale])
-        
-    return data, data_scaler
 
 def standardize_col(data, col):
     df = data.copy()
