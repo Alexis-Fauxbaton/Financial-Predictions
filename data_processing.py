@@ -13,9 +13,11 @@ import imblearn
 from imblearn.under_sampling import RandomUnderSampler
 from imblearn.over_sampling import RandomOverSampler
 from enum import Enum
-#from predict import create_predict_data
+
+# from predict import create_predict_data
 
 pd.set_option('display.max_rows', 500)
+
 
 # Only processes 1m data for now
 class TimeFrame(Enum):
@@ -23,6 +25,7 @@ class TimeFrame(Enum):
     THIRTY_MINUTE = 30
     ONE_HOUR = 60
     FOUR_HOURS = 240
+
 
 class Indicators(Enum):
     RSI = "RSI"
@@ -33,9 +36,11 @@ class Indicators(Enum):
     QAV = "QAV"
     NTRADES = "NTRADES"
     LOG_RET = "LOG_RET"
-    
+    TICK_DENSITY = "TICK_DENSITY" # TODO Measures the density of ticks in a rolling window (used to measure relative activity)
+
+
 def add_adx(data, interval=14):
-    #data.ta.adx(cumulative=True, append=True)
+    # data.ta.adx(cumulative=True, append=True)
     adx_cols = ta.adx(data["High"], data["Low"],
                       data["Close"], length=interval)
 
@@ -78,26 +83,34 @@ def add_log_return(data, interval=1):
 
     return data
 
+
 def add_percent_return(data, interval=1):
     percent_r = ta.percent_return(data["Close"], length=interval)
 
-    #percent_r = percent_r.rename("PERCENT_RETURN", axis=1)
+    # percent_r = percent_r.rename("PERCENT_RETURN", axis=1)
     percent_r = percent_r.rename("PERC_RET")
 
     data = data.join(percent_r)
 
     return data
 
+
 def add_obv(data):
-    obv = ta.obv(data["Close"], data["Volume"])
-        
+    if "Volume USD" in data.columns:
+        vol_col = data["Volume USD"]
+    else:
+        vol_col = data["Volume"]
+
+    obv = ta.obv(data["Close"], vol_col)
+
     obv = ta.percent_return(obv, length=1)
-    
+
     obv = obv.rename("OBV")
-    
+
     data = data.join(obv)
-    
+
     return data
+
 
 def add_qav_var(data, interval=1):
     qav = ta.percent_return(data["Quote Asset Volume"], length=interval)
@@ -108,6 +121,7 @@ def add_qav_var(data, interval=1):
 
     return data
 
+
 def add_ntrades_var(data, interval=1):
     nt = ta.percent_return(data["NTrades"], length=interval)
 
@@ -116,6 +130,7 @@ def add_ntrades_var(data, interval=1):
     data = data.join(nt)
 
     return data
+
 
 def add_indicators(data):
     data = add_percent_return(data)
@@ -127,11 +142,11 @@ def add_indicators(data):
 
     return data
 
+
 ###################################################### INDICATORS FOR HIGHER TIMEFRAMES #################################################################
 
 
 def fear_and_greed():
-
     url = "https://api.alternative.me/fng/?limit=0"
     r = requests.get(url=url)
     fng = r.json()
@@ -142,7 +157,7 @@ def fear_and_greed():
         fng.loc[index, "timestamp"] = datetime.utcfromtimestamp(
             fng.loc[index, "timestamp"])
         fng.loc[index, "timestamp"] = fng.loc[index,
-                                              "timestamp"].strftime("%Y-%m-%d")
+        "timestamp"].strftime("%Y-%m-%d")
     fng.rename(columns={"timestamp": "Date", "value": "FnG"}, inplace=True)
 
     return fng.drop(["time_until_update", "value_classification"], axis=1)
@@ -156,7 +171,8 @@ def confirmation_time(data):
             date = date + timedelta(days=j)
             # print(str(date)[:-9])
             df = df.append({"Date": str(date)[
-                           :-9], "Confirmation Time": data.loc[i, "median-confirmation-time"]}, ignore_index=True)
+                                    :-9], "Confirmation Time": data.loc[i, "median-confirmation-time"]},
+                           ignore_index=True)
     return df
 
 
@@ -169,7 +185,7 @@ def network_transactions(data):
             date = date + timedelta(days=j)
             # print(str(date)[:-9])
             df = df.append({"Date": str(date)[
-                           :-9], "Transactions": data.loc[i, "n-transactions"]}, ignore_index=True)
+                                    :-9], "Transactions": data.loc[i, "n-transactions"]}, ignore_index=True)
     return df
 
 
@@ -181,9 +197,10 @@ def miners_revenue(data):
             date = datetime.strptime(data.loc[i, "Timestamp"][:-9], "%Y-%m-%d")
             date = date + timedelta(days=j)
             df = df.append({"Date": str(date)[
-                           :-9], "Miners Revenue": data.loc[i, "miners-revenue"]}, ignore_index=True)
+                                    :-9], "Miners Revenue": data.loc[i, "miners-revenue"]}, ignore_index=True)
 
     return df
+
 
 ############################################################ STANDARDIZE INDICATORS  #######################################################################
 
@@ -192,21 +209,23 @@ def standardize_col(data, col):
     df[col] = (df[col] - df[col].mean()) / df[col].std()
     return df
 
+
 ############################################################ DATA MANIPULATION #######################################################################
 
 # start and end are complete dates, assumes that data has a UNIX/timestamp column            
 def get_data_between(data, start, end):
     start_unix = datetime.strptime(start, "%d/%m/%Y").timestamp()
-    
+
     end_unix = datetime.strptime(end, "%d/%m/%Y").timestamp()
-    
-    #print("Start : {} || End : {}".format(start_unix, end_unix))
-    
-    #print(len(data))
-    
+
+    # print("Start : {} || End : {}".format(start_unix, end_unix))
+
+    # print(len(data))
+
     return data.loc[(data["Unix"] >= start_unix) & (data["Unix"] < end_unix)]
 
-# Assumes that data1 is a train dataset and data2 is a separate test dataset 
+
+# Assumes that data1 is a train dataset and data2 is a separate test dataset
 def yearly_custom_splitter(data1, data2):
     train_data = data1.drop(["Date", "Unix", "Target"], axis=1)
     train_labels = data1["Target"]
@@ -222,48 +241,49 @@ def yearly_custom_splitter(data1, data2):
         pass
 
     if variation_check:
-        return train_data, train_labels, test_data, test_labels, data2["Target_Variation"] 
+        return train_data, train_labels, test_data, test_labels, data2["Target_Variation"]
     else:
         return train_data, train_labels, test_data, test_labels, None
+
 
 # Returns a sample from data containing any label with equal distribution
 def sample_equal_target(data, method="classic"):
     if method == "classic":
         classes = data["Target"].nunique()
         counts = data["Target"].value_counts().sort_index()
-        
-        #print(counts)
-        
-        #print("Before",data["Target"].value_counts())
-        
+
+        # print(counts)
+
+        # print("Before",data["Target"].value_counts())
+
         data["Weights"] = 0
         for i in range(classes):
-            data["Weights"].loc[data["Target"] == i] = 1/(classes*counts[i])
-            
-        #print(data["Weights"].loc[data["Target"] == 0])
-            
-        #sample = data.sample(int(len(data)/2.5),weights=data["Weights"])
-        sample = data.sample(60000,weights=data["Weights"])
-        
+            data["Weights"].loc[data["Target"] == i] = 1 / (classes * counts[i])
+
+        # print(data["Weights"].loc[data["Target"] == 0])
+
+        # sample = data.sample(int(len(data)/2.5),weights=data["Weights"])
+        sample = data.sample(60000, weights=data["Weights"])
+
         sample_labels = sample["Target"]
         sample.drop("Weights", inplace=True, axis=1)
-        
-        #print("After",sample["Target"].value_counts())
+
+        # print("After",sample["Target"].value_counts())
     elif method == "smote":
         sm = imblearn.over_sampling.SMOTE(random_state=42)
         sample, sample_labels = sm.fit_resample(data, data["Target"])
         sample.drop("Target", inplace=True, axis=1)
-        
+
     elif method == "undersample":
         undersampler = RandomUnderSampler(random_state=42)
         sample, sample_labels = undersampler.fit_resample(data.drop("Target", axis=1), data["Target"])
-        
+
     elif method == "oversample":
         oversampler = RandomOverSampler(random_state=42)
         sample, sample_labels = oversampler.fit_resample(data.drop("Target", axis=1), data["Target"])
-        
-    
-    return sample,sample_labels
+
+    return sample, sample_labels
+
 
 def custom_splitter(data1, data2):
     train_data = data1.drop(["Date", "Unix", "Target"], axis=1)
@@ -274,35 +294,111 @@ def custom_splitter(data1, data2):
     try:
         train_data.drop("Target_Variation", axis=1, inplace=True)
         test_data.drop("Target_Variation", axis=1, inplace=True)
-        return train_data, train_labels, test_data, test_labels, data2["Target_Variation"] 
+        return train_data, train_labels, test_data, test_labels, data2["Target_Variation"]
     except:
-        return train_data, train_labels, test_data, test_labels, None    
+        return train_data, train_labels, test_data, test_labels, None
 
-########################################################## Data Resampling #################################################################################   
+
+########################################################## Data Resampling #################################################################################
+
 
 '''
 Here we make the assumption that the already available data is 1m since this is a higher frequency timeframe
 from which we can resample to higher timeframe
 '''
-def resample_data(data, timeframe:TimeFrame):
-    #We don't change Open as it will always be the beginning of the actual candle
+
+'''
+def resample_data(data, timeframe: TimeFrame):
+    # We don't change Open as it will always be the beginning of the actual candle
     data['Close'] = data.loc[data.index + timeframe, 'Close']
-    
+
     data['High'] = data['High'].rolling(timeframe).max()
-    
+
     data['Low'] = data['Low'].rolling.min()
-    
+
     data['Volume USD'] = data['Volume USD'].rolling(timeframe).sum()
-    
+
     data = add_indicators(data)
-    
-    #TODO FINISH THIS FUNCTION
+
+    # TODO FINISH THIS FUNCTION
     data, data_scaler = standardize_indicators(data)
-    
+
+    return data
+'''
+
+
+########################################################## Bar resampling #################################################################################
+
+def get_usd_volume(data):
+    data["Volume USD"] = data["Volume"] * (data["Open"] + data["Close"] + data["High"] + data["Low"]) / 4
+
     return data
 
-########################################################## Standard Data Processing Functions #################################################################################   
-    
+
+'''
+Making the assumption that only regular OHLC candles + dates are available
+'''
+
+
+def get_dollar_bars(data: pd.DataFrame, threshold=1e8):
+    if "Volume USD" not in data.columns:
+        vol_data = get_usd_volume(data)
+
+    dollar_open = []
+    dollar_close = []
+    dollar_high = []
+    dollar_low = []
+    dollar_unix = []
+    dollar_ntrades = []
+
+    running_volume = 0
+    running_low = np.inf
+    running_high = -np.inf
+    running_unix = data.loc[0, "Unix"]
+    running_open = data.loc[0, "Open"]
+    running_ntrades = 0
+
+    for idx, row in vol_data.iterrows():
+
+        current_high = row["High"]
+        current_low = row["Low"]
+        running_ntrades += row["NTrades"]
+        running_volume += row["Volume USD"]
+
+        if current_high > running_high:
+            running_high = current_high
+
+        if current_low < running_low:
+            running_low = current_low
+
+        if running_volume >= threshold:
+            dollar_close.append(row["Close"])
+            dollar_low.append(running_low)
+            dollar_high.append(running_high)
+            dollar_unix.append(running_unix)
+            dollar_open.append(running_open)
+            dollar_ntrades.append(running_ntrades)
+
+            running_low = np.inf
+            running_high = -np.inf
+            # print(running_volume, threshold, running_ntrades)
+            prev_running_volume = running_volume
+            running_volume = running_volume - threshold
+            # print(row["Volume USD"], "\n")
+            running_ntrades = int((running_volume / prev_running_volume) * running_ntrades)
+            if idx + 1 != vol_data.shape[0]:
+                running_unix = vol_data.loc[idx + 1, "Unix"]
+                running_open = vol_data.loc[idx + 1, "Open"]
+
+    dollar_data = pd.DataFrame(
+        {'Unix': dollar_unix, 'Open': dollar_open, 'High': dollar_high,
+         'Low': dollar_low, 'Close': dollar_close, 'NTrades': dollar_ntrades})
+
+    return dollar_data
+
+
+########################################################## Standard Data Processing Functions #################################################################################
+
 
 def merge_1m():
     data2017 = pd.read_csv("minute_data/BTC-2017min.csv")
@@ -316,20 +412,20 @@ def merge_1m():
     # data_by_minute = data_by_minute.sort_values(by="Unix", ascending=True, inplace=False) # ??????????????????!?!¿!?¿!?¿!?¿!?¿!?!¿?!¿?!¿?¿!?¿!?¿!?¿
     data_by_minute.to_csv("minute_data/BTC-USD_1m.csv", index=False)
 
+
 # 1 minute data processing
 
 
 def process_minute_data(write=True):
-
     try:
         data = pd.read_csv("minute_data/BTC-USD_1m.csv")
     except:
         print("Error retrieving 1m data")
-        print("Creating 1m data...",end='\n')
+        print("Creating 1m data...", end='\n')
         merge_1m()
         print("Done")
         data = pd.read_csv("minute_data/BTC-USD_1m.csv")
-        
+
     data.sort_values(by="Unix", ascending=True,
                      inplace=True, ignore_index=True)
     data = add_percent_return(data)
@@ -337,7 +433,7 @@ def process_minute_data(write=True):
     data = add_rsi(data)
     data = add_macd(data)
     data = add_adx(data)
-    #data.drop("Adj Close",axis=1,inplace=True)
+    # data.drop("Adj Close",axis=1,inplace=True)
     columns_to_standardize = ["Volume USD", "MACD", "MACD_H",
                               "RSI", "Variation", "LOG_RETURN", "ADX14", "-DM", "+DM"]
     means, std = data[columns_to_standardize].mean(
@@ -374,4 +470,17 @@ def process_minute_data(write=True):
 
 
 if __name__ == "__main__":
-    process_minute_data()
+    df = pd.read_csv("BTCUSDT.csv")
+
+    dollar_df = get_dollar_bars(df)
+
+    print(dollar_df.shape)
+
+    print(dollar_df.head())
+
+    import plotly.graph_objects as go
+
+    fig = go.Figure(data=[go.Candlestick(x=dollar_df["Unix"],
+                                         open=dollar_df['Open'], high=dollar_df['High'],
+                                         low=dollar_df['Low'], close=dollar_df['Close'])])
+    fig.show()

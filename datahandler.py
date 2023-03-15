@@ -26,6 +26,8 @@ class DataHandler:
                     self.data = self.data[[i % skip == 0 for i in range(self.data.shape[0])]]
                 self.timeframe = ''
             except:
+                del self.data
+                self.data = None
                 print("Failed to import data from path {}".format(csv_path))
 
     def head(self, display=5):
@@ -81,11 +83,12 @@ class DataHandler:
                         self.indicators.append(ind)
                 else:
                     self.indicators.append(indicator.value)
-            except:
+            except Exception as e:
                 if isinstance(indicator, list):
                     print(f"Could not add indicator {' '.join(indicator.value)}")
                 else:
                     print(f"Could not add indicator {indicator.value}")
+                print("Error message", e)
 
     def standardize_data(self, method="standard"):
         self.columns_to_scale = self.indicators + self.var_attributes
@@ -104,18 +107,38 @@ class DataHandler:
                 self.add_indicator(indicator)
                 self.var_attributes.append(indicator.value)
 
+            elif (isinstance(indicator.value, list) is False) and (indicator.value not in self.indicators):
+                print(f"Ignoring indicator {indicator.value}. Reason: Not found in the list of indicators")
+                continue
+
             elif isinstance(indicator.value, list):
-                for col in indicator.value:
-                    ind_var = ta.percent_return(self.data[col], length=interval)
 
-                    ind_var = ind_var.rename(col + " Var")
+                cont = False
 
-                    self.var_indicators.append(col + " Var")
+                for ind in indicator.value:
+
+                    if ind not in self.indicators:
+                        print(f"Ignoring indicators {', '.join(indicator.value)}. Reason: Not found in the list of "
+
+                              f"indicators")
+
+                        cont = True
+
+                        break
+
+                    ind_var = ta.percent_return(self.data[ind], length=interval)
+
+                    ind_var = ind_var.rename(ind + " Var")
+
+                    self.var_indicators.append(ind + " Var")
 
                     if remove:
-                        self.data.drop(col, axis=1, inplace=True)
+                        self.data.drop(ind, axis=1, inplace=True)
 
                     self.data = self.data.join(ind_var)
+
+                if cont:
+                    continue
 
             else:
                 ind_var = ta.percent_return(self.data[indicator.value], length=interval)
