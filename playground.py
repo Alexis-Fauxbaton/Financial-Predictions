@@ -13,26 +13,29 @@ class NewDataHandler(DataHandler):
             self.data = dataset
 
     def create_predict_data(self):
-        self.predict_data = self.data[self.var_indicators + self.var_attributes]
+        self.predict_data = self.data[['Unix'] + self.var_indicators + self.var_attributes]
 
 
 def main():
-    # handler = NewDataHandler("BTCUSDT.csv", index_col=0)
-    data = pd.read_csv("BTCUSDT.csv")
+    # handler = NewDataHandler("BTCUSDT_15m.csv", index_col=0)
+    data = pd.read_csv("BTCUSDT_15m.csv")
 
     data = get_dollar_bars(data)
 
     handler = NewDataHandler(dataset=data)
 
-    handler.add_indicators([Indicators.RSI, Indicators.MACD, Indicators.ADX, Indicators.OBV])
+    handler.add_indicators([Indicators.RSI, Indicators.MACD, Indicators.ADX, Indicators.OBV, Indicators.TICK_DENSITY])
 
-    handler.create_var_indicator([Indicators.RSI, Indicators.MACD, Indicators.ADX, Indicators.OBV, Indicators.PERC_RET])
+    print(handler.head())
+
+    handler.create_var_indicator([Indicators.RSI, Indicators.MACD, Indicators.ADX, Indicators.OBV, Indicators.PERC_RET,
+                                  Indicators.TICK_DENSITY])
 
     handler.data.replace([np.inf, -np.inf], 0, inplace=True)
 
     plot_candlesticks(handler.data)
 
-    handler.standardize_data()
+    # handler.standardize_data()
 
     handler.data.dropna(axis=0, inplace=True)
 

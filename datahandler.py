@@ -73,6 +73,8 @@ class DataHandler:
             self.data = add_percent_return(self.data)
         elif indicator == Indicators.OBV:
             self.data = add_obv(self.data)
+        elif indicator == Indicators.TICK_DENSITY:
+            self.data = add_tick_density(self.data)
 
     def add_indicators(self, indicators: list(Indicators)):
         for indicator in indicators:
@@ -105,6 +107,10 @@ class DataHandler:
 
             if (indicator == Indicators.PERC_RET) or (indicator == Indicators.LOG_RET):
                 self.add_indicator(indicator)
+                self.var_attributes.append(indicator.value)
+
+            elif indicator == Indicators.TICK_DENSITY and indicator.value in self.indicators:
+                print(indicator)
                 self.var_attributes.append(indicator.value)
 
             elif (isinstance(indicator.value, list) is False) and (indicator.value not in self.indicators):

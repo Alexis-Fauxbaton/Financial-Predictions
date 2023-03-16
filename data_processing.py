@@ -36,7 +36,7 @@ class Indicators(Enum):
     QAV = "QAV"
     NTRADES = "NTRADES"
     LOG_RET = "LOG_RET"
-    TICK_DENSITY = "TICK_DENSITY" # TODO Measures the density of ticks in a rolling window (used to measure relative activity)
+    TICK_DENSITY = "TICK_DENSITY"  # TODO Measures the density of ticks in a rolling window (used to measure relative activity)
 
 
 def add_adx(data, interval=14):
@@ -128,6 +128,22 @@ def add_ntrades_var(data, interval=1):
     nt = nt.rename("NTrades Var")
 
     data = data.join(nt)
+
+    return data
+
+
+def add_tick_density(data: pd.DataFrame, lookback=5):
+    """
+    Adds tick density indicator based on the number of minutes elapsed between two bars in a window
+    """
+
+    tick_delta = data['Unix'].diff() / 1000
+
+    tick_density = tick_delta.rolling(lookback).mean()
+
+    tick_density.rename('TICK_DENSITY', inplace=True)
+
+    data = data.join(tick_density)
 
     return data
 
@@ -470,7 +486,7 @@ def process_minute_data(write=True):
 
 
 if __name__ == "__main__":
-    df = pd.read_csv("BTCUSDT.csv")
+    df = pd.read_csv("BTCUSDT_15m.csv")
 
     dollar_df = get_dollar_bars(df)
 
