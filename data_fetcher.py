@@ -23,6 +23,19 @@ class TimeFrameMinuteConverter(Enum):
     H1 = 60
     D1 = 1440
 
+def convert_timeframe_to_minutes(t: TimeFrame):
+    if t == TimeFrame.M15:
+        return TimeFrameMinuteConverter.M15.value
+
+    if t == TimeFrame.M1:
+        return TimeFrameMinuteConverter.M1.value
+
+    if t == TimeFrame.H1:
+        return TimeFrameMinuteConverter.H1.value
+
+    if t == TimeFrame.D1:
+        return TimeFrameMinuteConverter.D1.value
+
 
 class DataFetcher:
 
@@ -62,7 +75,9 @@ class BinanceDataFetcher(DataFetcher):
 
         candles = []
 
-        limit = 10
+        limit = 1000
+
+        step = convert_timeframe_to_minutes(timeframe)
 
         curr_time = self.client.ui_klines("BTCUSDT", timeframe.value, limit=1, startTime=start_timestamp)[0][0]
 
@@ -72,7 +87,7 @@ class BinanceDataFetcher(DataFetcher):
             r = self.client.ui_klines("BTCUSDT", timeframe.value, limit=limit, startTime=curr_time)
             candles += [r[i][:-3] for i in range(len(r))]
 
-            curr_time += 15 * 60 * limit * 1000  # *1000 to convert to milliseconds
+            curr_time += step * 60 * limit * 1000  # *1000 to convert to milliseconds
 
         print(str(dt_object))
         data = pd.DataFrame(candles, columns=["Unix", "Open", "High", "Low", "Close", "Volume", "Close Unix",
@@ -83,7 +98,7 @@ class BinanceDataFetcher(DataFetcher):
 
         data.drop_duplicates(inplace=True)
 
-        data.to_csv(f"fetched_{self.pair}_{timeframe.value}.csv")
+        data.to_csv(f"{self.pair}_{timeframe.value}.csv")
 
 
 if __name__ == "__main__":
