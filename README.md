@@ -7,4 +7,4 @@ On the TODO list:
   - Find efficient ways to incorporate Machine Learning to existing indicators to create meaningful signals
   - Find an efficient way to implement a backest environment for any strategy
   
-This project is still in an early development stage, and a lot of work is still needed in order to fulfill its objectives.
+This project is still in an early development stage, and a lot of work is still needed in order to fulfill its objectives. See dev branch for latest updates
