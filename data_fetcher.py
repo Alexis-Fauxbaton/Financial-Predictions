@@ -61,7 +61,7 @@ class BinanceDataFetcher(DataFetcher):
 
         self.pair = pair
 
-    def getAllCandlesUntil(self, end_date="2023-02-28", timeframe: TimeFrame = TimeFrame.M15):
+    def getAllCandlesUntil(self, end_date="2023-05-31", timeframe: TimeFrame = TimeFrame.M15):
         start_time = "2017-08-01"
 
         format = "%Y-%m-%d"
