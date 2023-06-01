@@ -22,6 +22,7 @@ def triple_barrier_labelling(data: pd.DataFrame, upper_barrier=1.02, lower_barri
     counters = [None for _ in range(data.shape[0])]
     
     index_list = data.index.to_list()
+    list_index = 0
     for idx, row in data.iterrows():
         if idx == index_list[-1]:
             break
@@ -31,7 +32,6 @@ def triple_barrier_labelling(data: pd.DataFrame, upper_barrier=1.02, lower_barri
         upper_threshold = curr_close * upper_barrier
         lower_threshold = curr_close * lower_barrier
         
-        list_index = 0
         counter = idx + 1
         while data.loc[counter, "High"] < upper_threshold and data.loc[counter, "Low"] > lower_threshold and (counter - idx) < time_limit and idx + time_limit <= index_list[-1]:
             counter += 1
@@ -39,12 +39,10 @@ def triple_barrier_labelling(data: pd.DataFrame, upper_barrier=1.02, lower_barri
         upper_check = data.loc[counter, "High"] >= upper_threshold
         lower_check = data.loc[counter, "Low"] <= lower_threshold
     
-        # print(idx, counter-idx, upper_check, lower_check)
-        
-        if counter == time_limit: barriers[list_index] = 0
+        if upper_check and lower_check: barriers[list_index] = 0 #Undecisive = 0
         elif upper_check: barriers[list_index] = 1
         elif lower_check: barriers[list_index] = -1
-        if upper_check and lower_check: barriers[list_index] = np.nan
+        elif (counter - idx) == time_limit: barriers[list_index] = 0
         
         counters[list_index] = counter
         
