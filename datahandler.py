@@ -109,10 +109,6 @@ class DataHandler:
                 self.add_indicator(indicator)
                 self.var_attributes.append(indicator.value)
 
-            #elif indicator == Indicators.TICK_DENSITY and indicator.value in self.indicators:
-            #    print(indicator)
-            #    self.var_attributes.append(indicator.value)
-
             elif (isinstance(indicator.value, list) is False) and (indicator.value not in self.indicators):
                 print(f"Ignoring indicator {indicator.value}. Reason: Not found in the list of indicators")
                 continue

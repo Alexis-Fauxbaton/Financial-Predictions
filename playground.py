@@ -1,6 +1,7 @@
 from datahandler import *
 from gui import *
 import time
+import pandas_ta as ta
 
 pd.set_option("display.max_columns", None)
 
@@ -48,11 +49,39 @@ def triple_barrier_labelling(data: pd.DataFrame, upper_barrier=1.02, lower_barri
         
         list_index += 1
         
-    data['Barrier'] = barriers
+    data['Label'] = barriers
     data['Index'] = counters
     
     return data
-        
+
+import pandas as pd
+
+def ma_crossover_labelling(data: pd.DataFrame, ma1=15, ma2=50, horizon=15):
+    # Calculate the moving averages
+    data[f'MA{ma1}'] = data['Close'].rolling(window=ma1).mean()
+    data[f'MA{ma2}'] = data['Close'].rolling(window=ma2).mean()
+    
+    data[f'MA{ma1} Var'] = ta.percent_return(data[f'MA{ma1}'], length=1)
+    data[f'MA{ma2} Var'] = ta.percent_return(data[f'MA{ma2}'], length=1)
+
+    # Create a boolean mask for crossover occurrences
+    ma1_over_ma2 = data[f'MA{ma1}'] > data[f'MA{ma2}']
+    ma2_over_ma1_future = data[f'MA{ma1}'].shift(-horizon) < data[f'MA{ma2}'].shift(-horizon)
+    bearish_crossover_mask = ma1_over_ma2 & ma2_over_ma1_future
+    bullish_crossover_mask = ~ma1_over_ma2 & ~ma2_over_ma1_future
+
+    # Initialize labels
+    labels = pd.Series(0, index=data.index)
+
+    # Assign labels based on the crossover mask
+    labels[bearish_crossover_mask] = -1
+    labels[bullish_crossover_mask] = 1
+
+    # Assign labels to the dataframe
+    data['Label'] = labels
+
+    return data
+
 
 def main():
     # handler = NewDataHandler("BTCUSDT_15m.csv", index_col=0)
@@ -89,7 +118,7 @@ def main():
     
     print(data.tail(50))
     
-    print(data['Barrier'].value_counts(), data.shape[0])
+    print(data['Label'].value_counts(), data.shape[0])
 
 
 if __name__ == "__main__":
