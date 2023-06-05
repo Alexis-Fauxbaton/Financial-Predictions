@@ -47,6 +47,9 @@ class TSDataset(Dataset):
         return self.data.shape[0] - self.seq_length
 
     def __getitem__(self, index):
+        if index >= self.data.shape[0] - self.seq_length:
+            raise(Exception)
+        
         seq = self.data.loc[index:index + self.seq_length].values
         target = int(self.target.loc[index + self.seq_length].tolist())
         target_tensor = torch.zeros(self.output_size)
