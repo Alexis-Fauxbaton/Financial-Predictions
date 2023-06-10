@@ -9,26 +9,39 @@ import numpy as np
 import time
 
 
-def get_accuracy(output, target):
+def get_accuracy(output, target, n_labels):
     y_true = target.detach().numpy()
 
     y_prob = output.detach().numpy()
 
-    y_pred = np.argmax(y_prob, axis=-1)
-    y_true = np.argmax(y_true, axis=-1)
+    y_pred = None
+
+    if n_labels > 2:
+
+        y_pred = np.argmax(y_prob, axis=-1)
+        y_true = np.argmax(y_true, axis=-1)
+
+    else:
+        y_pred = np.where(y_prob > 0.5, 1, 0)
 
     accuracy = metrics.accuracy_score(y_true, y_pred)
 
     return accuracy
 
 
-def get_confusion_matrix(output, target):
+def get_confusion_matrix(output, target, n_labels):
     y_true = target.detach().numpy()
     y_prob = output.detach().numpy()
-    y_pred = np.argmax(y_prob, axis=-1)
-    y_true = np.argmax(y_true, axis=-1)
-    return confusion_matrix(y_true, y_pred, labels=[0, 1, 2])
-
+    # n_labels = np.unique(y_true).size
+    if n_labels > 2:
+        y_pred = np.argmax(y_prob, axis=-1)
+        y_true = np.argmax(y_true, axis=-1)
+        return confusion_matrix(y_true, y_pred, labels=[i for i in range(n_labels)])
+    else:
+        y_pred = np.where(y_prob > 0.5, 1, 0)
+        # print(y_true, y_pred)
+        return confusion_matrix(y_true, y_pred)
+        
 
 class TSDataset(Dataset):
 
@@ -38,7 +51,7 @@ class TSDataset(Dataset):
         self.data = data.copy()
         self.unix = data["Unix"]
         self.target = data['Target']
-        self.output_size = self.target.unique().size
+        self.output_size = self.target.dropna().unique().size
         self.data.drop(["Unix", "Target"], axis=1, inplace=True)
         self.seq_length = seq_length
         self.size = len(self.data.columns)
@@ -48,20 +61,23 @@ class TSDataset(Dataset):
 
     def __getitem__(self, index):
         if index >= self.data.shape[0] - self.seq_length:
-            raise(Exception)
-        
+            raise (Exception)
+
         seq = self.data.loc[index:index + self.seq_length].values
         target = int(self.target.loc[index + self.seq_length].tolist())
-        target_tensor = torch.zeros(self.output_size)
+        target_tensor = None
         if self.output_size == 3:
+            target_tensor = torch.zeros(self.output_size)
             target_tensor[target + 1] = 1
-        else:
-            target_tensor[target] = 1
+        elif self.output_size == 2:
+            target_tensor = torch.Tensor([target])
         return torch.Tensor(seq), target_tensor
 
 
 def train_lstm(model, train_dataset, val_dataset, epochs=30, lr=0.01, batch_size=128, num_layers=3, hidden_size=100,
                device='CPU', train_sampler=None, class_weights=None):
+
+    n_labels = train_dataset.dataset.output_size
 
     if train_sampler is not None:
         train_loader = torch.utils.data.DataLoader(
@@ -71,12 +87,15 @@ def train_lstm(model, train_dataset, val_dataset, epochs=30, lr=0.01, batch_size
             train_dataset, batch_size=batch_size, shuffle=True)
 
     val_loader = torch.utils.data.DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=True)
+        val_dataset, batch_size=batch_size, shuffle=False)
 
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
-    criterion = nn.CrossEntropyLoss(
-    ) if class_weights is None else nn.CrossEntropyLoss(weight=class_weights)
+    if model.binary:
+        criterion = nn.BCELoss() if class_weights is None else nn.BCELoss(weight=class_weights)
+    else:
+        criterion = nn.CrossEntropyLoss(
+        ) if class_weights is None else nn.CrossEntropyLoss(weight=class_weights)
 
     losses = []
 
@@ -134,7 +153,7 @@ def train_lstm(model, train_dataset, val_dataset, epochs=30, lr=0.01, batch_size
 
             running_loss += loss.item()
 
-            accuracy = get_accuracy(output.cpu(), target.cpu())
+            accuracy = get_accuracy(output.cpu(), target.cpu(), n_labels)
 
             running_accuracy += accuracy * len(data)
 
@@ -153,7 +172,7 @@ def train_lstm(model, train_dataset, val_dataset, epochs=30, lr=0.01, batch_size
 
             model = model.eval()
 
-            val_running_confusion_matrix = np.zeros((3, 3))
+            val_running_confusion_matrix = np.zeros((n_labels, n_labels))
             val_data_buffer = None
             val_target_buffer = None
 
@@ -177,9 +196,9 @@ def train_lstm(model, train_dataset, val_dataset, epochs=30, lr=0.01, batch_size
                 val_running_loss += val_loss
 
                 val_running_confusion_matrix += get_confusion_matrix(
-                    val_output.cpu(), val_target.cpu())
+                    val_output.cpu(), val_target.cpu(), n_labels)
 
-                accuracy = get_accuracy(val_output.cpu(), val_target.cpu())
+                accuracy = get_accuracy(val_output.cpu(), val_target.cpu(), n_labels)
 
                 val_running_accuracy += accuracy * len(val_data)
 
@@ -215,6 +234,8 @@ def train_lstm(model, train_dataset, val_dataset, epochs=30, lr=0.01, batch_size
 
 def eval_lstm(model, dataset, batch_size=128, num_layers=3, hidden_size=100, device='cpu'):
     model.eval()
+    
+    n_labels = dataset.dataset.output_size
 
     criterion = nn.CrossEntropyLoss()
 
@@ -240,15 +261,15 @@ def eval_lstm(model, dataset, batch_size=128, num_layers=3, hidden_size=100, dev
         output, _ = model(data, hidden)
 
         output = torch.squeeze(output[:, -1:, :], 1)
-        
+
         outputs.append(output)
         targets.append(target)
 
         loss += criterion(output, target) * len(data)
 
-        confusion_matrix += get_confusion_matrix(output.cpu(), target.cpu())
+        confusion_matrix += get_confusion_matrix(output.cpu(), target.cpu(), n_labels)
 
-        accuracy += get_accuracy(output.cpu(), target.cpu()) * len(data)
+        accuracy += get_accuracy(output.cpu(), target.cpu(), n_labels) * len(data)
 
     loss /= len(dataloader.dataset)
 
@@ -260,5 +281,5 @@ def eval_lstm(model, dataset, batch_size=128, num_layers=3, hidden_size=100, dev
     print(f"Accuracy : {accuracy} || Loss : {loss}")
 
     print(f"Confusion matrix : \n{confusion_matrix}")
-    
+
     return outputs, targets
