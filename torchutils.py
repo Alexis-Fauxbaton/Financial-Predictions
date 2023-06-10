@@ -45,14 +45,14 @@ def get_confusion_matrix(output, target, n_labels):
 
 class TSDataset(Dataset):
 
-    def __init__(self, data: pd.DataFrame, seq_length=15) -> None:
+    def __init__(self, data: pd.DataFrame, seq_length=15, target_col = 'Target') -> None:
         super().__init__()
 
         self.data = data.copy()
         self.unix = data["Unix"]
-        self.target = data['Target']
+        self.target = data[target_col]
         self.output_size = self.target.dropna().unique().size
-        self.data.drop(["Unix", "Target"], axis=1, inplace=True)
+        self.data.drop(["Unix", "Target", target_col], axis=1, inplace=True, errors='ignore')
         self.seq_length = seq_length
         self.size = len(self.data.columns)
 
