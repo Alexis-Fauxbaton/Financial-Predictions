@@ -77,7 +77,10 @@ class TSDataset(Dataset):
 def train_lstm(model, train_dataset, val_dataset, epochs=30, lr=0.01, batch_size=128, num_layers=3, hidden_size=100,
                device='CPU', train_sampler=None, class_weights=None):
 
-    n_labels = train_dataset.dataset.output_size
+    try:
+        n_labels = train_dataset.dataset.output_size
+    except:
+        n_labels = train_dataset.output_size
 
     if train_sampler is not None:
         train_loader = torch.utils.data.DataLoader(
@@ -235,7 +238,10 @@ def train_lstm(model, train_dataset, val_dataset, epochs=30, lr=0.01, batch_size
 def eval_lstm(model, dataset, batch_size=128, num_layers=3, hidden_size=100, device='cpu'):
     model.eval()
     
-    n_labels = dataset.dataset.output_size
+    try:
+        n_labels = dataset.dataset.output_size
+    except:
+        n_labels = dataset.output_size
 
     criterion = nn.CrossEntropyLoss()
 
