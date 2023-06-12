@@ -18,7 +18,7 @@ class NewDataHandler(DataHandler):
         self.predict_data = self.data[['Unix'] + self.var_indicators + self.var_attributes]
 
 
-def triple_barrier_labelling(data: pd.DataFrame, upper_barrier=1.02, lower_barrier=0.99, time_limit=30):
+def triple_barrier_labelling(data: pd.DataFrame, upper_barrier=1.02, lower_barrier=0.98, time_limit=30):
     barriers = [None for _ in range(data.shape[0])]
     counters = [None for _ in range(data.shape[0])]
     
@@ -40,7 +40,7 @@ def triple_barrier_labelling(data: pd.DataFrame, upper_barrier=1.02, lower_barri
         upper_check = data.loc[counter, "High"] >= upper_threshold
         lower_check = data.loc[counter, "Low"] <= lower_threshold
     
-        if upper_check and lower_check: barriers[list_index] = 0 #Undecisive = 0
+        if upper_check and lower_check: barriers[list_index] = 0 # TODO Undecisive = 0, might want to improve this point for better efficiency
         elif upper_check: barriers[list_index] = 1
         elif lower_check: barriers[list_index] = -1
         elif (counter - idx) == time_limit: barriers[list_index] = 0

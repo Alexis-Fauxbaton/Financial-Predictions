@@ -75,7 +75,7 @@ class TSDataset(Dataset):
 
 
 def train_lstm(model, train_dataset, val_dataset, epochs=30, lr=0.01, batch_size=128, num_layers=3, hidden_size=100,
-               device='CPU', train_sampler=None, class_weights=None):
+               device='CPU', train_sampler=None, class_weights=None, model_name='default', save=False):
 
     try:
         n_labels = train_dataset.dataset.output_size
@@ -210,6 +210,9 @@ def train_lstm(model, train_dataset, val_dataset, epochs=30, lr=0.01, batch_size
         if val_acc > best_acc:
             best_acc = val_acc
             best_confusion_matrix = val_running_confusion_matrix
+            
+            if save:
+                torch.save(model, f'./models/{model_name}.pt')
 
         print("Epoch: {}/{} -- [{}/{} ({:.1f}%)]\tLoss: {}\tAccuracy: {:.3f}\tTime taken: {}".format(
             epoch + 1, epochs, (batch_idx + 1) *

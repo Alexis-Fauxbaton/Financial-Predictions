@@ -13,6 +13,7 @@ import imblearn
 from imblearn.under_sampling import RandomUnderSampler
 from imblearn.over_sampling import RandomOverSampler
 from enum import Enum
+from scipy.stats import kendalltau
 
 # from predict import create_predict_data
 
@@ -158,6 +159,20 @@ def add_indicators(data):
 
     return data
 
+def calculate_tau(ords, x):
+    return kendalltau(ords, x)[0]
+
+def add_kendall_tau(data, window=10):
+    # ords = range(window)
+    l = [(range(len(x)), x) for x in data['Close'].rolling(window)]
+
+    with Pool() as pool:
+        data[f'Kendall_{window}'] = pool.starmap(
+            calculate_tau,
+            l
+        )
+
+    return data
 
 ###################################################### INDICATORS FOR HIGHER TIMEFRAMES #################################################################
 
