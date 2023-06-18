@@ -118,7 +118,11 @@ class DataHandler:
                 cont = False
 
                 for ind in indicator.value:
-
+                    
+                    if indicator == Indicators.RSI and (ind != 'RSI'):
+                        self.var_attributes.append(ind)
+                        continue
+                    
                     if ind not in self.indicators:
                         print(f"Ignoring indicators {', '.join(indicator.value)}. Reason: Not found in the list of "
 

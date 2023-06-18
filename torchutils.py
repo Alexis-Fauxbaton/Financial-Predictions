@@ -40,7 +40,7 @@ def get_confusion_matrix(output, target, n_labels):
     else:
         y_pred = np.where(y_prob > 0.5, 1, 0)
         # print(y_true, y_pred)
-        return confusion_matrix(y_true, y_pred)
+        return confusion_matrix(y_true, y_pred).astype(int)
         
 
 class TSDataset(Dataset):
@@ -75,7 +75,7 @@ class TSDataset(Dataset):
 
 
 def train_lstm(model, train_dataset, val_dataset, epochs=30, lr=0.01, batch_size=128, num_layers=3, hidden_size=100,
-               device='CPU', train_sampler=None, class_weights=None, model_name='default', save=False):
+               device='CPU', train_sampler=None, class_weights=None, model_name='default', save=False, dynamic_batch=False):
 
     try:
         n_labels = train_dataset.dataset.output_size
@@ -124,6 +124,14 @@ def train_lstm(model, train_dataset, val_dataset, epochs=30, lr=0.01, batch_size
         batch_idx = 0
 
         data = None
+        
+        if dynamic_batch:
+            if train_sampler is not None:
+                train_loader = torch.utils.data.DataLoader(
+                    train_dataset, batch_size=batch_size, shuffle=False, sampler=train_sampler)
+            else:
+                train_loader = torch.utils.data.DataLoader(
+                    train_dataset, batch_size=batch_size, shuffle=True)
 
         for batch_idx, (data, target) in enumerate(train_loader):
             data, target = data.to(device), target.to(device)

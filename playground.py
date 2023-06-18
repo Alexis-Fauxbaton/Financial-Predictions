@@ -56,17 +56,26 @@ def triple_barrier_labelling(data: pd.DataFrame, upper_barrier=1.02, lower_barri
 
 import pandas as pd
 
-def ma_crossover_labelling(data: pd.DataFrame, ma1=15, ma2=50, horizon=15):
+def ma_crossover_labelling(data: pd.DataFrame, ma1=15, ma2=50, horizon=15, mode='exponential'):
+    names = {'normal': 'MA', 'exponential': 'EMA'}
+    name = names[mode] if mode in names.keys() else 'EMA'
     # Calculate the moving averages
-    data[f'MA{ma1}'] = data['Close'].rolling(window=ma1).mean()
-    data[f'MA{ma2}'] = data['Close'].rolling(window=ma2).mean()
+    if name == 'MA':
+        data[f'{name}{ma1}'] = data['Close'].rolling(window=ma1).mean()
+        data[f'{name}{ma2}'] = data['Close'].rolling(window=ma2).mean()
+    elif name == 'EMA':
+        data[f'{name}{ma1}'] = pd.Series.ewm(data['Close'], span=ma1).mean()
+        data[f'{name}{ma2}'] = pd.Series.ewm(data['Close'], span=ma2).mean()
+        
+    data[f'{name}{ma1} Var'] = ta.percent_return(data[f'{name}{ma1}'], length=1)
+    data[f'{name}{ma2} Var'] = ta.percent_return(data[f'{name}{ma2}'], length=1)
     
-    data[f'MA{ma1} Var'] = ta.percent_return(data[f'MA{ma1}'], length=1)
-    data[f'MA{ma2} Var'] = ta.percent_return(data[f'MA{ma2}'], length=1)
+    data[f'Close_{name}{ma1}_PERC_DIFF'] = ((data[f'{name}{ma1}'] - data["Close"]) / data["Close"])
+    data[f'Close_{name}{ma2}_PERC_DIFF'] = ((data[f'{name}{ma2}'] - data["Close"]) / data["Close"])
 
     # Create a boolean mask for crossover occurrences
-    ma1_over_ma2 = data[f'MA{ma1}'] > data[f'MA{ma2}']
-    ma2_over_ma1_future = data[f'MA{ma1}'].shift(-horizon) < data[f'MA{ma2}'].shift(-horizon)
+    ma1_over_ma2 = data[f'{name}{ma1}'] > data[f'{name}{ma2}']
+    ma2_over_ma1_future = data[f'{name}{ma1}'].shift(-horizon) < data[f'{name}{ma2}'].shift(-horizon)
     bearish_crossover_mask = ma1_over_ma2 & ma2_over_ma1_future
     bullish_crossover_mask = ~ma1_over_ma2 & ~ma2_over_ma1_future
 
@@ -82,6 +91,35 @@ def ma_crossover_labelling(data: pd.DataFrame, ma1=15, ma2=50, horizon=15):
 
     return data
 
+def ma_crossover_lagging_labelling(data: pd.DataFrame, ma1=15, ma2=50, horizon=1, mode='exponential'):
+    names = {'normal': 'MA', 'exponential': 'EMA'}
+    name = names[mode] if mode in [names.keys] else 'EMA'
+    
+    # Calculate the moving averages
+    if name == 'MA':
+        data[f'{name}{ma1}'] = data['Close'].rolling(window=ma1).mean()
+        data[f'{name}{ma2}'] = data['Close'].rolling(window=ma2).mean()
+    elif name == 'EMA':
+        data[f'{name}{ma1}'] = pd.Series.ewm(data['Close'], span=ma1).mean()
+        data[f'{name}{ma2}'] = pd.Series.ewm(data['Close'], span=ma2).mean()
+
+    # Create a boolean mask for crossover occurrences
+    ma1_over_ma2 = data[f'{name}{ma1}'] > data[f'{name}{ma2}']
+    ma2_over_ma1_past = data[f'{name}{ma1}'].shift(horizon) < data[f'{name}{ma2}'].shift(horizon)
+    bullish_crossover_mask = ma1_over_ma2 & ma2_over_ma1_past
+    bearish_crossover_mask = ~ma1_over_ma2 & ~ma2_over_ma1_past
+
+    # Initialize labels
+    labels = pd.Series(0, index=data.index)
+
+    # Assign labels based on the crossover mask
+    labels[bearish_crossover_mask] = -1
+    labels[bullish_crossover_mask] = 1
+
+    # Assign labels to the dataframe
+    data[f'Crossover_Lag_{horizon}'] = labels
+    
+    return data
 
 def main():
     # handler = NewDataHandler("BTCUSDT_15m.csv", index_col=0)

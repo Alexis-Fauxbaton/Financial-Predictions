@@ -29,13 +29,13 @@ class TimeFrame(Enum):
 
 
 class Indicators(Enum):
-    RSI = "RSI"
+    RSI = ["RSI", "RSI_30-", "RSI_BTW", "RSI_70+"]
     MACD = ["MACD", "MACD_H"]
     ADX = ["ADX14", "-DM", "+DM"]
     PERC_RET = "PERC_RET"
     OBV = "OBV"
     QAV = "QAV"
-    NTRADES = "NTRADES"
+    NTRADES = "NTrades"
     LOG_RET = "LOG_RET"
     TICK_DENSITY = "TICK_DENSITY"  # TODO Measures the density of ticks in a rolling window (used to measure relative activity)
 
@@ -54,12 +54,29 @@ def add_adx(data, interval=14):
 
 def add_rsi(data, interval=14):
     rsi = ta.rsi(data["Close"], length=interval)
-
     rsi = rsi.rename("RSI")
 
-    data = data.join(rsi)
+    rsi_70 = ((rsi > 70) & (~np.isnan(rsi))).astype(int)
+    rsi_30 = ((rsi < 30) & (~np.isnan(rsi))).astype(int)
+    rsi_none = ((rsi >= 30) & (rsi <= 70) & (~np.isnan(rsi))).astype(int)
+
+    rsi_70.rename("RSI_70+", inplace=True)
+    rsi_30.rename("RSI_30-", inplace=True)
+    rsi_none.rename("RSI_BTW", inplace=True)
+
+    rsi_cols = {
+        "RSI": rsi,
+        "RSI_30-": rsi_30,
+        "RSI_BTW": rsi_none,
+        "RSI_70+": rsi_70
+    }
+
+    rsi_df = pd.DataFrame(rsi_cols)
+        
+    data = pd.concat([data, rsi_df], axis=1)
 
     return data
+
 
 
 def add_macd(data, interval=14):
@@ -78,7 +95,7 @@ def add_log_return(data, interval=1):
     data.dropna(inplace=True, axis=0)
     log_r = ta.log_return(data["Close"], length=interval)
 
-    log_r = log_r.rename("LOG_RETURN")
+    log_r = log_r.rename("LOG_RET")
 
     data = data.join(log_r)
 
@@ -172,6 +189,17 @@ def add_kendall_tau(data, window=10):
             l
         )
 
+    return data
+
+def add_ichimoku(data):
+    ichimoku_cols = ta.ichimoku(data['High'], data['Low'], data['Close'])[0][['ISA_9', 'ISB_26']].rename({'ISA_9': 'ICHIMOKU_9', 'ISB_26': 'ICHIMOKU_26'})
+        
+    data = data.join(ichimoku_cols)
+    
+    data['ABOVE_ICHIMOKU_9'] = (data['Close'] >= data['ICHIMOKU_9']) * 1
+    
+    data['ABOVE_ICHIMOKU_26'] = (data['Close'] >= data['ICHIMOKU_26']) * 1
+    
     return data
 
 ###################################################### INDICATORS FOR HIGHER TIMEFRAMES #################################################################
