@@ -104,4 +104,4 @@ class BinanceDataFetcher(DataFetcher):
 if __name__ == "__main__":
     fetcher = BinanceDataFetcher()
 
-    fetcher.getAllCandlesUntil(timeframe=TimeFrame.M1)
+    fetcher.getAllCandlesUntil(timeframe=TimeFrame.H1)
