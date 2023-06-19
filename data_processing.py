@@ -192,13 +192,16 @@ def add_kendall_tau(data, window=10):
     return data
 
 def add_ichimoku(data):
-    ichimoku_cols = ta.ichimoku(data['High'], data['Low'], data['Close'])[0][['ISA_9', 'ISB_26']].rename({'ISA_9': 'ICHIMOKU_9', 'ISB_26': 'ICHIMOKU_26'})
+    ichimoku_cols = ta.ichimoku(data['High'], data['Low'], data['Close'])[0][['ISA_9', 'ISB_26']].rename({'ISA_9': 'ICHIMOKU_9', 'ISB_26': 'ICHIMOKU_26'}, axis=1)
         
     data = data.join(ichimoku_cols)
     
     data['ABOVE_ICHIMOKU_9'] = (data['Close'] >= data['ICHIMOKU_9']) * 1
     
     data['ABOVE_ICHIMOKU_26'] = (data['Close'] >= data['ICHIMOKU_26']) * 1
+    
+    data['Close_ICHIMOKU_9_PERC_DIFF'] = ((data['ICHIMOKU_9'] - data["Close"]) / data["Close"])
+    data['Close_ICHIMOKU_26_PERC_DIFF'] = ((data['ICHIMOKU_26'] - data["Close"]) / data["Close"])
     
     return data
 
