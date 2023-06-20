@@ -123,7 +123,7 @@ def ma_crossover_lagging_labelling(data: pd.DataFrame, ma1=15, ma2=50, horizon=1
 
 def main():
     # handler = NewDataHandler("BTCUSDT_15m.csv", index_col=0)
-    data = pd.read_csv("BTCUSDT_1m.csv")
+    data = pd.read_csv("BTCUSDT_15m.csv")
 
     data = get_dollar_bars(data)
 
