@@ -2,6 +2,7 @@ from datahandler import *
 from gui import *
 import time
 import pandas_ta as ta
+from gui import plot_candlesticks
 
 pd.set_option("display.max_columns", None)
 
