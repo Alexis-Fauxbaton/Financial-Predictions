@@ -12,6 +12,7 @@ class Pairs(Enum):
 
 class TimeFrame(Enum):
     M1 = "1m"
+    M5 = "5m"
     M15 = "15m"
     H1 = "1h"
     D1 = "1d"
@@ -19,6 +20,7 @@ class TimeFrame(Enum):
 
 class TimeFrameMinuteConverter(Enum):
     M1 = 1
+    M5 = 5
     M15 = 15
     H1 = 60
     D1 = 1440
@@ -26,6 +28,9 @@ class TimeFrameMinuteConverter(Enum):
 def convert_timeframe_to_minutes(t: TimeFrame):
     if t == TimeFrame.M15:
         return TimeFrameMinuteConverter.M15.value
+    
+    if t == TimeFrame.M5:
+        return TimeFrameMinuteConverter.M5.value
 
     if t == TimeFrame.M1:
         return TimeFrameMinuteConverter.M1.value
@@ -104,4 +109,4 @@ class BinanceDataFetcher(DataFetcher):
 if __name__ == "__main__":
     fetcher = BinanceDataFetcher()
 
-    fetcher.getAllCandlesUntil(timeframe=TimeFrame.H1)
+    fetcher.getAllCandlesUntil(timeframe=TimeFrame.M5)

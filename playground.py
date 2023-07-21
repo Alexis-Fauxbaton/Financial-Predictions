@@ -73,6 +73,7 @@ def ma_crossover_labelling(data: pd.DataFrame, ma1=15, ma2=50, horizon=15, mode=
     
     data[f'Close_{name}{ma1}_PERC_DIFF'] = ((data[f'{name}{ma1}'] - data["Close"]) / data["Close"])
     data[f'Close_{name}{ma2}_PERC_DIFF'] = ((data[f'{name}{ma2}'] - data["Close"]) / data["Close"])
+    data[f'{name}{ma1}_{name}{ma2}_PERC_DIFF'] = ((data[f'{name}{ma2}'] - data[f'{name}{ma1}']) / data[f'{name}{ma1}'])
 
     # Create a boolean mask for crossover occurrences
     ma1_over_ma2 = data[f'{name}{ma1}'] > data[f'{name}{ma2}']

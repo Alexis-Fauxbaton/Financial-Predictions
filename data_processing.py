@@ -31,7 +31,7 @@ class TimeFrame(Enum):
 class Indicators(Enum):
     RSI = ["RSI", "RSI_30-", "RSI_BTW", "RSI_70+"]
     MACD = ["MACD", "MACD_H"]
-    ADX = ["ADX14", "-DM", "+DM"]
+    ADX = ["ADX", "-DM", "+DM"]
     PERC_RET = "PERC_RET"
     OBV = "OBV"
     QAV = "QAV"
@@ -40,19 +40,19 @@ class Indicators(Enum):
     TICK_DENSITY = "TICK_DENSITY"  # TODO Measures the density of ticks in a rolling window (used to measure relative activity)
 
 
-def add_adx(data, interval=14):
+def add_adx(data, interval=3):
     # data.ta.adx(cumulative=True, append=True)
     adx_cols = ta.adx(data["High"], data["Low"],
                       data["Close"], length=interval)
 
-    adx_cols = adx_cols.rename({"DMP_14": "+DM", "DMN_14": "-DM", "ADX_14": "ADX14"}, axis=1)
+    adx_cols = adx_cols.rename({f"DMP_{interval}": "+DM", f"DMN_{interval}": "-DM", f"ADX_{interval}": "ADX"}, axis=1)
 
     data = data.join(adx_cols)
 
     return data
 
 
-def add_rsi(data, interval=14):
+def add_rsi(data, interval=3):
     rsi = ta.rsi(data["Close"], length=interval)
     rsi = rsi.rename("RSI")
 
@@ -79,8 +79,10 @@ def add_rsi(data, interval=14):
 
 
 
-def add_macd(data, interval=14):
+def add_macd(data, interval=3):
     macd = ta.macd(data["Close"])
+
+    print(macd.columns)
 
     macd = macd.drop("MACDs_12_26_9", axis=1)
 

@@ -138,8 +138,12 @@ def train_lstm(model, train_dataset, val_dataset, epochs=30, lr=0.01, batch_size
 
             data = data.squeeze(-1)
 
-            hidden = (torch.zeros(num_layers, data.shape[0], hidden_size).to(device), torch.zeros(
-                num_layers, data.shape[0], hidden_size).to(device))  # Hidden state and cell state
+            if not model.bidirectional:
+                hidden = (torch.zeros(num_layers, data.shape[0], hidden_size).to(device), torch.zeros(
+                    num_layers, data.shape[0], hidden_size).to(device))  # Hidden state and cell state
+            else:
+                hidden = (torch.zeros(num_layers * 2, data.shape[0], hidden_size).to(device), torch.zeros(
+                    num_layers * 2, data.shape[0], hidden_size).to(device))
             # data.shape[0] : batch_size
 
             # print(data.shape, hidden[0].shape)
@@ -162,9 +166,9 @@ def train_lstm(model, train_dataset, val_dataset, epochs=30, lr=0.01, batch_size
 
             optimizer.step()
 
-            running_loss += loss.item()
+            running_loss += loss.detach().item()
 
-            accuracy = get_accuracy(output.cpu(), target.cpu(), n_labels)
+            accuracy = get_accuracy(output.detach().cpu(), target.detach().cpu(), n_labels)
 
             running_accuracy += accuracy * len(data)
 
@@ -193,16 +197,19 @@ def train_lstm(model, train_dataset, val_dataset, epochs=30, lr=0.01, batch_size
 
                 val_data = val_data.squeeze(-1)
 
-                val_hidden = (torch.zeros(num_layers, val_data.shape[0], hidden_size).to(device), torch.zeros(
-                    num_layers, val_data.shape[0], hidden_size).to(device))  # Hidden state and cell state
-
+                if not model.bidirectional:
+                    val_hidden = (torch.zeros(num_layers, val_data.shape[0], hidden_size).to(device), torch.zeros(
+                        num_layers, val_data.shape[0], hidden_size).to(device))  # Hidden state and cell state
+                else:
+                    val_hidden = (torch.zeros(num_layers * 2, val_data.shape[0], hidden_size).to(device), torch.zeros(
+                        num_layers * 2, val_data.shape[0], hidden_size).to(device))
                 # print(val_data.shape, val_hidden[0].shape)
 
                 val_output, _ = model(val_data, val_hidden)
 
                 val_output = torch.squeeze(val_output[:, -1:, :], 1)
 
-                val_loss = criterion(val_output, val_target)
+                val_loss = criterion(val_output.detach(), val_target.detach())
 
                 val_running_loss += val_loss
 
@@ -267,36 +274,42 @@ def eval_lstm(model, dataset, batch_size=128, num_layers=3, hidden_size=100, dev
     outputs = []
     targets = []
 
-    for batch_idx, (data, target) in enumerate(dataloader):
-        data, target = data.to(device), target.to(device)
+    with torch.no_grad():
 
-        data = data.squeeze(-1)
+        for batch_idx, (data, target) in enumerate(dataloader):
+            data, target = data.to(device), target.to(device)
 
-        hidden = (torch.zeros(num_layers, data.shape[0], hidden_size).to(device),
-                  torch.zeros(num_layers, data.shape[0], hidden_size).to(device))  # Hidden state and cell state
+            data = data.squeeze(-1)
 
-        output, _ = model(data, hidden)
+            if not model.bidirectional:
+                hidden = (torch.zeros(num_layers, data.shape[0], hidden_size).to(device),
+                        torch.zeros(num_layers, data.shape[0], hidden_size).to(device))  # Hidden state and cell state
+            else:
+                hidden = (torch.zeros(2 * num_layers, data.shape[0], hidden_size).to(device),
+                        torch.zeros(2 * num_layers, data.shape[0], hidden_size).to(device))
+                
+            output, _ = model(data, hidden)
 
-        output = torch.squeeze(output[:, -1:, :], 1)
+            output = torch.squeeze(output[:, -1:, :], 1)
 
-        outputs.append(output)
-        targets.append(target)
+            outputs.append(output.detach())
+            targets.append(target.detach())
 
-        loss += criterion(output, target) * len(data)
+            loss += criterion(output.detach(), target.detach()) * len(data)
 
-        confusion_matrix += get_confusion_matrix(output.cpu(), target.cpu(), n_labels)
+            confusion_matrix += get_confusion_matrix(output.detach().cpu(), target.detach().cpu(), n_labels)
 
-        accuracy += get_accuracy(output.cpu(), target.cpu(), n_labels) * len(data)
+            accuracy += get_accuracy(output.detach().cpu(), target.detach().cpu(), n_labels) * len(data)
 
-    loss /= len(dataloader.dataset)
+        loss /= len(dataloader.dataset)
 
-    accuracy /= len(dataloader.dataset)
+        accuracy /= len(dataloader.dataset)
 
-    outputs = torch.cat(outputs, dim=0)
-    targets = torch.cat(targets, dim=0)
+        outputs = torch.cat(outputs, dim=0)
+        targets = torch.cat(targets, dim=0)
 
-    print(f"Accuracy : {accuracy} || Loss : {loss}")
+        print(f"Accuracy : {accuracy} || Loss : {loss}")
 
-    print(f"Confusion matrix : \n{confusion_matrix}")
+        print(f"Confusion matrix : \n{confusion_matrix}")
 
-    return outputs, targets
+        return outputs, targets

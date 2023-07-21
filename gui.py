@@ -15,7 +15,7 @@ def plot_candlesticks(dataset):
     fig.show()
 
 
-def visualize_model_outputs(data, predict_data, model, seq_length, device, display=True):
+def visualize_model_outputs(data, predict_data, model, seq_length, device, display=True, target_return=0.005, ratio=2):
     dataset = predict_data.drop(['Target', 'Unix'], axis=1, errors='ignore')
     val_indices = range(
         round(0.7 * dataset.shape[0])), round(0.9 * dataset.shape[0])
@@ -40,8 +40,15 @@ def visualize_model_outputs(data, predict_data, model, seq_length, device, displ
 
         seq = dataset.loc[idx:idx + seq_length].values
 
-        hidden = (torch.zeros(model.num_layers, model.hidden_size).to(device), torch.zeros(
-            model.num_layers, model.hidden_size).to(device))
+        #hidden = (torch.zeros(model.num_layers, model.hidden_size).to(device), torch.zeros(
+        #    model.num_layers, model.hidden_size).to(device))
+        if not model.bidirectional:
+            hidden = (torch.zeros(model.num_layers, model.hidden_size).to(device), torch.zeros(
+                    model.num_layers, model.hidden_size).to(device))  # Hidden state and cell state
+        else:
+            hidden = (torch.zeros(model.num_layers * 2, model.hidden_size).to(device), torch.zeros(
+                    model.num_layers * 2, model.hidden_size).to(device))
+        
         output, _ = model(torch.Tensor(seq).to(device), hidden)
 
         output = output[-1, :]
@@ -49,6 +56,8 @@ def visualize_model_outputs(data, predict_data, model, seq_length, device, displ
 
 
         output = int((torch.argmax(output, axis=-1) - 1).cpu())
+        
+        expected_output = predict_data.loc[idx + seq_length, 'Target']
 
         curr_close = data.loc[idx + seq_length, 'Close']
 
@@ -57,12 +66,16 @@ def visualize_model_outputs(data, predict_data, model, seq_length, device, displ
             continue
 
         elif output == 1:
-            tp = 1.005 * curr_close
-            sl = 0.9975 * curr_close
-
+            # tp = 1.005 * curr_close # 15 min standard 
+            # sl = 0.9975 * curr_close
+            tp = (1 + target_return) * curr_close
+            sl = (1 - target_return / ratio) * curr_close
+            
         elif output == -1:
-            tp = 0.995 * curr_close
-            sl = 1.0025 * curr_close
+            # tp = 0.995 * curr_close
+            # sl = 1.0025 * curr_close
+            tp =  curr_close / (1 + target_return)
+            sl =  curr_close / (1 - target_return / ratio)
 
         check_profit_data = data.loc[idx + seq_length + 1:idx +
                                      seq_length + 7, ['Open', 'High', 'Low', 'Close']]
@@ -100,7 +113,7 @@ def visualize_model_outputs(data, predict_data, model, seq_length, device, displ
 
         pred_index = 3 * seq_length
 
-        if display and output == -1:
+        if display:
             # color = cmap[output]
             plot_data = data.loc[idx - 2 * seq_length: idx + 2 * seq_length].reset_index(drop=True)
             plot_data['Old Index'] = plot_data.index
@@ -112,7 +125,7 @@ def visualize_model_outputs(data, predict_data, model, seq_length, device, displ
                                        == pred_index].index[0]
             exit_date = plot_data.loc[plot_data['Old Index']
                                       == pred_index + 7].index[0]
-            mpf.plot(plot_data[['Open', 'High', 'Low', 'Close']], type='candle', style='yahoo', title=f'{output}', addplot=[ma_plot], hlines=dict(
+            mpf.plot(plot_data[['Open', 'High', 'Low', 'Close']], type='candle', style='yahoo', title=f'Yielded {output}, Expected {expected_output}', addplot=[ma_plot], hlines=dict(
                 hlines=[tp, sl], colors=['g', 'r'], linestyle='--'), vlines=dict(vlines=[entry_date, exit_date], colors=[color, 'black'], linestyle='--'), savefig=f'./backtest_img/{idx}.png')
             # plt.plot(plot_data['MA5'], label='MA5')
             # plt.plot(plot_data['MA10'], label='MA10')
